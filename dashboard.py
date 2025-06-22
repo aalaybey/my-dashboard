@@ -5,32 +5,18 @@ import psycopg2
 import matplotlib.pyplot as plt
 import streamlit_authenticator as stauth  # ★ yeni
 
-# ------------------------------------------------------------------------------
-# 1) KULLANICI / ŞİFRE TANIMI
-#    İsterseniz bunları st.secrets içinde tutabilirsiniz; örnek basit olması için
-#    kod içinde gösteriliyor.
-# ------------------------------------------------------------------------------
-NAMES = ["Alper"]           # Görünecek isim
-USERNAMES = ["aalaybey"]       # Oturum açarken yazılacak kullanıcı adı
-
-
-# Parolaları tek seferlik hash’lemek için:
-#   from streamlit_authenticator import Hasher
-#   hashed_pw = Hasher(["12345"]).generate()
-#   print(hashed_pw)
-# çıktısını aşağıdaki listeye yapıştırın → düz metin saklamamış olursunuz.
-HASHED_PASSWORDS = ["$2a$12$MKw.S2MU0uKGQBzoa.vtVuqPVYlqMNJBDnquVSpZ4eoFe1LXXeFn2"]
+# ───────── 1) KULLANICILAR ─────────
+NAMES       = ["Alper"]
+USERNAMES   = ["aalaybey"]
+HASHED_PWS  = ["$2a$12$MKw.S2MU0uKGQBzoa.vtVuqPVYlqMNJBDnquVSpZ4eoFe1LXXeFn2"]
 
 credentials = {
     "usernames": {
         u: {"name": n, "password": pw}
-        for u, n, pw in zip(USERNAMES, NAMES, HASHED_PASSWORDS)
+        for u, n, pw in zip(USERNAMES, NAMES, HASHED_PWS)
     }
 }
 
-# ------------------------------------------------------------------------------
-# 2) GİRİŞ EKRANI
-# ------------------------------------------------------------------------------
 authenticator = stauth.Authenticate(
     credentials,
     st.secrets["COOKIE_NAME"],
@@ -38,19 +24,20 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
+# ───────── 2) GİRİŞ FORMU ─────────
 with st.sidebar:
     st.title("🔐 Giriş Yap")
-    # DOĞRU  ➜ önce konum, sonra özelleştirilmiş etiketler
-    name, auth_status, username = authenticator.login(
-        "sidebar",  # veya "main" – nereye çizilsin?
+    authenticator.login(
+        "sidebar",
         fields={
-            "Form name": "Oturum Aç",  # üst başlık
-            "Login": "Giriş",  # buton yazısı
-            "Username": "Kullanıcı adı",
-            "Password": "Şifre"
-        }
+            "Form name": "Oturum Aç",
+            "Login":     "Giriş",
+            "Username":  "Kullanıcı adı",
+            "Password":  "Şifre",
+        },
     )
 
+auth_status = st.session_state.get("authentication_status")
 if auth_status is False:
     st.error("❌ Kullanıcı adı veya şifre hatalı")
     st.stop()
@@ -58,9 +45,6 @@ elif auth_status is None:
     st.warning("ℹ️ Lütfen giriş bilgilerinizi girin")
     st.stop()
 
-# ------------------------------------------------------------------------------
-# 3) YETKİLİ KULLANICI ARAYÜZÜ
-# ------------------------------------------------------------------------------
 authenticator.logout("Çıkış", "sidebar")
 
 st.title("Excel'den Supabase'e – Kişisel Dashboard")
