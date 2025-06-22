@@ -25,18 +25,16 @@ authenticator = stauth.Authenticate(
 )
 
 # ───────── 2) GİRİŞ FORMU ─────────
-with st.sidebar:
-    st.title("🔐 Giriş Yap")
-    authenticator.login(
-        "sidebar",
-        fields={
-            "Form name": "Oturum Aç",
-            "Login":     "Giriş",
-            "Username":  "Kullanıcı adı",
-            "Password":  "Şifre",
-        },
-    )
-
+st.title("🔐 Giriş Yap")
+authenticator.login(
+    "main",                          # ← tek değişiklik bu!
+    fields={
+        "Form name": "Oturum Aç",
+        "Login":     "Giriş",
+        "Username":  "Kullanıcı adı",
+        "Password":  "Şifre",
+    },
+)
 auth_status = st.session_state.get("authentication_status")
 if auth_status is False:
     st.error("❌ Kullanıcı adı veya şifre hatalı")
@@ -45,7 +43,7 @@ elif auth_status is None:
     st.warning("ℹ️ Lütfen giriş bilgilerinizi girin")
     st.stop()
 
-authenticator.logout("Çıkış", "sidebar")
+authenticator.logout("Çıkış", "main")
 
 st.title("Excel'den Supabase'e – Kişisel Dashboard")
 
