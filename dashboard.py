@@ -4,12 +4,11 @@ import psycopg2
 import matplotlib.pyplot as plt
 import streamlit_authenticator as stauth
 
-# Kullanıcı bilgileri (doğru, güncel format)
 credentials = {
     "usernames": {
         "aalaybey": {
             "name": "Alper",
-            "password": "$2b$12$pyGC1YoA3qQwo8uSxXK9e.tqDjMS8xtXH4mBMS9xqDGLXT96i11DC"  # hash'lenmiş şifre!
+            "password": "$2b$12$pyGC1YoA3qQwo8uSxXK9e.tqDjMS8xtXH4mBMS9xqDGLXT96i11DC"
         }
     }
 }
@@ -21,7 +20,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1
 )
 
-name, authentication_status, username = authenticator.login("Giriş Yap", location="main")
+name, authentication_status, username = authenticator.login("Giriş Yap", "main")  # dikkat: tırnaklı main, eşittir yok!
 
 if authentication_status is False:
     st.error("Kullanıcı adı veya şifre yanlış.")
@@ -31,7 +30,6 @@ elif authentication_status is None:
     st.stop()
 else:
     st.success(f"Hoşgeldin, {name}!")
-
 
 
 DB_HOST = st.secrets["DB_HOST"]
