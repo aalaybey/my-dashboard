@@ -40,7 +40,16 @@ authenticator = stauth.Authenticate(
 
 with st.sidebar:
     st.title("🔐 Giriş Yap")
-    name, auth_status, username = authenticator.login("Oturum Aç", "main")
+    # DOĞRU  ➜ önce konum, sonra özelleştirilmiş etiketler
+    name, auth_status, username = authenticator.login(
+        "sidebar",  # veya "main" – nereye çizilsin?
+        fields={
+            "Form name": "Oturum Aç",  # üst başlık
+            "Login": "Giriş",  # buton yazısı
+            "Username": "Kullanıcı adı",
+            "Password": "Şifre"
+        }
+    )
 
 if auth_status is False:
     st.error("❌ Kullanıcı adı veya şifre hatalı")
