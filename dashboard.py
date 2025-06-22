@@ -21,16 +21,21 @@ USERNAMES = ["aalaybey"]       # Oturum açarken yazılacak kullanıcı adı
 # çıktısını aşağıdaki listeye yapıştırın → düz metin saklamamış olursunuz.
 HASHED_PASSWORDS = ["$2a$12$MKw.S2MU0uKGQBzoa.vtVuqPVYlqMNJBDnquVSpZ4eoFe1LXXeFn2"]
 
+credentials = {
+    "usernames": {
+        u: {"name": n, "password": pw}
+        for u, n, pw in zip(USERNAMES, NAMES, HASHED_PASSWORDS)
+    }
+}
+
 # ------------------------------------------------------------------------------
 # 2) GİRİŞ EKRANI
 # ------------------------------------------------------------------------------
 authenticator = stauth.Authenticate(
-    NAMES,
-    USERNAMES,
-    HASHED_PASSWORDS,
+    credentials,
     st.secrets["COOKIE_NAME"],
     st.secrets["SIGN_KEY"],
-    cookie_expiry_days=1
+    cookie_expiry_days=1,
 )
 
 with st.sidebar:
