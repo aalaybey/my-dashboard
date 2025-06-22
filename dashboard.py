@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 import matplotlib.pyplot as plt
-import streamlit as st
 import streamlit_authenticator as stauth
 
 # --- Kullanıcı bilgileri ---
@@ -10,7 +9,7 @@ users = [
     {
         "name": "Alper",
         "username": "aalaybey",
-        "password": stauth.Hasher("Alay8616").generate()[0],  # Şifrenizi buraya yazın!
+        "password": stauth.Hasher(["Alay8616"]).generate()[0],  # Şifrenizi buraya yazın!
     }
 ]
 
