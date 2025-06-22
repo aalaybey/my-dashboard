@@ -10,7 +10,7 @@ users = [
     {
         "name": "Alper",
         "username": "aalaybey",
-        "password": stauth.Hasher(["Alay8616"]).generate()[0],  # Şifrenizi buraya yazın!
+        "password": stauth.Hasher("Alay8616").generate()[0],  # Şifrenizi buraya yazın!
     }
 ]
 
