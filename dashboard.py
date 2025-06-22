@@ -9,7 +9,7 @@ users = [
     {
         "name": "Alper",
         "username": "aalaybey",
-        "password": stauth.Hasher(['Alay8616']).generate()[0],  # Doğru! Sadece köşeli parantez ve tek tırnak
+        "password": "$2a$12$jahr8psB.vh3Y6mIHccYP.zOo5C0CfYcyJBvcwxFe.ncqQSFomKkC"
     }
 ]
 
