@@ -18,7 +18,7 @@ authenticator = stauth.Authenticate(
     "my_dashboard_cookie", "my_dashboard_signature_key", cookie_expiry_days=1
 )
 
-name, authentication_status, username = authenticator.login("Giriş Yap", "main")
+name, authentication_status, username = authenticator.login("Giriş Yap", location="main")
 
 if not authentication_status:
     st.warning("Giriş yapmalısınız.")
