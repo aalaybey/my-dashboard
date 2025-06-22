@@ -2,6 +2,31 @@ import streamlit as st
 import pandas as pd
 import psycopg2
 import matplotlib.pyplot as plt
+import streamlit as st
+import streamlit_authenticator as stauth
+
+# --- Kullanıcı bilgileri ---
+users = [
+    {
+        "name": "Alper",
+        "username": "aalaybey",
+        "password": stauth.Hasher(["Alay8616"]).generate()[0],  # Şifrenizi buraya yazın!
+    }
+]
+
+authenticator = stauth.Authenticate(
+    users,
+    "my_dashboard_cookie", "my_dashboard_signature_key", cookie_expiry_days=1
+)
+
+name, authentication_status, username = authenticator.login("Giriş Yap", "main")
+
+if not authentication_status:
+    st.warning("Giriş yapmalısınız.")
+    st.stop()
+elif authentication_status is None:
+    st.info("Lütfen giriş bilgilerinizi girin.")
+    st.stop()
 
 
 DB_HOST = st.secrets["DB_HOST"]
