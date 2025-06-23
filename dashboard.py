@@ -7,8 +7,8 @@ import streamlit_authenticator as stauth  # ★ yeni
 
 # ───────── 1) KULLANICILAR ─────────
 NAMES       = ["Alper"]
-USERNAMES   = ["aalaybey"]
-HASHED_PWS  = ["$2a$12$MKw.S2MU0uKGQBzoa.vtVuqPVYlqMNJBDnquVSpZ4eoFe1LXXeFn2"]
+USERNAMES   = st.secrets["USERNAMES"]
+HASHED_PWS  = st.secrets["HASHED_PWS"]
 
 credentials = {
     "usernames": {
@@ -25,9 +25,8 @@ authenticator = stauth.Authenticate(
 )
 
 # ───────── 2) GİRİŞ FORMU ─────────
-st.title("🔐 Giriş Yap")
 authenticator.login(
-    "main",                          # ← tek değişiklik bu!
+    "main",
     fields={
         "Form name": "Oturum Aç",
         "Login":     "Giriş",
@@ -36,12 +35,14 @@ authenticator.login(
     },
 )
 auth_status = st.session_state.get("authentication_status")
+
+# ───────── 3) DURUM KONTROLÜ ─────────
 if auth_status is False:
     st.error("❌ Kullanıcı adı veya şifre hatalı")
     st.stop()
+
 elif auth_status is None:
-    st.warning("ℹ️ Lütfen giriş bilgilerinizi girin")
-    st.stop()
+    st.stop()                     # ⚠️ Uyarı gösterme, sessizce bekle
 
 authenticator.logout("Çıkış", "main")
 
@@ -54,7 +55,7 @@ DB_USER = st.secrets["DB_USER"]
 DB_PASS = st.secrets["DB_PASS"]
 DB_PORT = st.secrets["DB_PORT"]
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)   # 120 saniyede bir otomatik tazele
 def load_data():
     conn = psycopg2.connect(
         host=DB_HOST,
@@ -66,6 +67,12 @@ def load_data():
     df = pd.read_sql("SELECT * FROM excel_metrics", conn)
     conn.close()
     return df
+
+# --- Kullanıcı manuel yenilemek isterse ---
+if st.button("🔄 Verileri yenile"):
+    st.cache_data.clear()   # önbelleği temizle
+    st.rerun()              # sayfayı baştan çalıştır
+
 
 with st.spinner("🔄 Veriler yükleniyor..."):
     df = load_data()
