@@ -95,8 +95,20 @@ if len(values) == 0:
     st.warning("Bu seçimde veri bulunamadı.")
 else:
     chart_df = pd.DataFrame(
-        {"Dönem": periods, "Değer": pd.to_numeric(values, errors="coerce")}
-    ).sort_values("Dönem")
+        {"Dönem": periods, "Değer": values}  # 1) ham çerçeve
+    )
+
+    # 2) Eksik satırları at, tipleri düzelt
+    chart_df = chart_df.dropna(subset=["Dönem", "Değer"])
+    chart_df["Dönem"] = chart_df["Dönem"].astype(str)  # x-ekseni string
+    chart_df["Değer"] = pd.to_numeric(chart_df["Değer"], errors="coerce")
+
+    # 3) Son temizlik: yine boş kaldıysa uyar ve dur
+    if chart_df.empty:
+        st.warning("Bu metrik için gösterilecek veri yok.")
+        st.stop()
+
+    chart_df = chart_df.sort_values("Dönem")  # 4) sıralayıp devam
 
     st.subheader(f"{ticker} – {metric}")
     fig, ax = plt.subplots()
