@@ -261,6 +261,7 @@ def radar_page():
         ebit_margin_cur, ebit_margin_prev = get_latest(t, "EBIT Margin")
         fcf_margin_cur, fcf_margin_prev = get_latest(t, "FCF Margin")
         cats_cur, cats_prev = get_latest(t, "CATS")
+        capex_amort_cur, capex_amort_prev = get_latest(t, "Capex/Amort")  # <-- YENİ EKLEME
         # 1. Tahmin son > fiyat son-1
         if tahmin_cur is None or fiyat_prev is None or tahmin_cur <= fiyat_prev: continue
         # 2. Tahmin son > tahmin son-1
@@ -274,6 +275,8 @@ def radar_page():
         if fcf_margin_cur is None or fcf_margin_prev is None or fcf_margin_cur <= fcf_margin_prev: continue
         # 6. CATS son > son-1
         if cats_cur is None or cats_prev is None or cats_cur <= cats_prev: continue
+        # 7. Capex/Amort son < Capex/Amort son-1  ← EKLEDİĞİN KRİTER
+        if capex_amort_cur is None or capex_amort_prev is None or capex_amort_cur >= capex_amort_prev: continue
         radar_list.append(t)
     if not radar_list:
         st.info("Radar kriterlerini sağlayan şirket yok.")
