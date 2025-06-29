@@ -179,7 +179,7 @@ def company_page(ticker):
 
     if not fiyat.empty or not tahmin.empty:
         st.markdown("#### Fiyat & Tahmin")
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(8, 4))
         if not fiyat.empty:
             ax.plot(fiyat['period'], fiyat['value'], marker='o', label="Fiyat", color='royalblue')
         if not tahmin.empty:
@@ -188,7 +188,11 @@ def company_page(ticker):
         ax.legend()
         plt.xticks(rotation=30)
         plt.tight_layout()
+        # Y ekseni daima küçükten büyüğe olsun
+        if ax.get_ylim()[0] > ax.get_ylim()[1]:
+            ax.set_ylim(ax.get_ylim()[::-1])
         st.pyplot(fig)
+
     # Diğer metrikler
     for m in metrics_for_chart:
         if m in ["Fiyat", "Tahmin"]: continue
@@ -204,6 +208,7 @@ def company_page(ticker):
             plt.xticks(rotation=30)
             plt.tight_layout()
             st.pyplot(fig)
+
     st.markdown("---")
     # Alt: Ham metrik tablo
     st.markdown("#### Tüm Ham Veriler")
