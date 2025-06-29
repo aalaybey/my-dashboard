@@ -180,18 +180,26 @@ def company_page(ticker):
     if not fiyat.empty or not tahmin.empty:
         st.markdown("#### Fiyat & Tahmin")
         fig, ax = plt.subplots(figsize=(8, 4))
+
+        # --- BURADA DÖNÜŞÜMLERİ EKLE ---
         if not fiyat.empty:
+            fiyat = fiyat.copy()
+            fiyat['value'] = fiyat['value'].astype(float)
+            fiyat = fiyat.sort_values('period')   # period sırası önemli
             ax.plot(fiyat['period'], fiyat['value'], marker='o', label="Fiyat", color='royalblue')
+
         if not tahmin.empty:
+            tahmin = tahmin.copy()
+            tahmin['value'] = tahmin['value'].astype(float)
+            tahmin = tahmin.sort_values('period')
             ax.plot(tahmin['period'], tahmin['value'], marker='o', label="Tahmin", color='chocolate')
+
         ax.set_ylabel("Değer")
         ax.legend()
         plt.xticks(rotation=30)
         plt.tight_layout()
-        # Y ekseni daima küçükten büyüğe olsun
-        if ax.get_ylim()[0] > ax.get_ylim()[1]:
-            ax.set_ylim(ax.get_ylim()[::-1])
         st.pyplot(fig)
+
 
     # Diğer metrikler
     for m in metrics_for_chart:
@@ -201,6 +209,9 @@ def company_page(ticker):
         d = d[d['value'] != 'None']
         d = d[d['period'] != 'None']
         if not d.empty:
+            d = d.copy()
+            d['value'] = d['value'].astype(float)
+            d = d.sort_values('period')
             st.markdown(f"#### {m}")
             fig, ax = plt.subplots()
             ax.plot(d['period'], d['value'], marker='o')
@@ -208,6 +219,7 @@ def company_page(ticker):
             plt.xticks(rotation=30)
             plt.tight_layout()
             st.pyplot(fig)
+
 
     st.markdown("---")
     # Alt: Ham metrik tablo
