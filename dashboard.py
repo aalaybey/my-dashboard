@@ -113,19 +113,29 @@ def navbar():
         sel = st.selectbox("Search Bar", all_tickers, index=all_tickers.index(st.session_state['selected_ticker']), key="select_ticker", label_visibility="collapsed")
         if sel != st.session_state['selected_ticker']:
             go_ticker(sel)
-            st.experimental_rerun()
+            st.rerun()
     with c3:
         if st.button("Radar"):
             st.session_state['nav'] = "radar"
-            st.experimental_rerun()
+            st.rerun()
     with c4:
         if st.button("Favoriler"):
             st.session_state['nav'] = "favorites"
-            st.experimental_rerun()
+            st.rerun()
 
 # NAV State: company, radar, favorites
 if 'nav' not in st.session_state:
     st.session_state['nav'] = 'company'
+
+# Yardımcı: float dönüşümünde hata olursa None dön
+def tofloat(x):
+    try:
+        if x is None: return None
+        if pd.isna(x): return None
+        if isinstance(x, str) and x.lower() in ('none', ''): return None
+        return float(x)
+    except:
+        return None
 
 # ────────── MAIN BODY ──────────
 def company_page(ticker):
@@ -157,8 +167,16 @@ def company_page(ticker):
     metric_data = {m: df[df['metric'] == m].sort_values('period') for m in metrics_for_chart}
 
     # Fiyat & Tahmin birlikte çizgi grafiği
-    fiyat = metric_data["Fiyat"]
-    tahmin = metric_data["Tahmin"]
+    fiyat = metric_data["Fiyat"].dropna(subset=['period', 'value'])
+    fiyat = fiyat[(fiyat['value'].notnull()) & (fiyat['period'].notnull())]
+    fiyat = fiyat[fiyat['value'] != 'None']
+    fiyat = fiyat[fiyat['period'] != 'None']
+
+    tahmin = metric_data["Tahmin"].dropna(subset=['period', 'value'])
+    tahmin = tahmin[(tahmin['value'].notnull()) & (tahmin['period'].notnull())]
+    tahmin = tahmin[tahmin['value'] != 'None']
+    tahmin = tahmin[tahmin['period'] != 'None']
+
     if not fiyat.empty or not tahmin.empty:
         st.markdown("#### Fiyat & Tahmin")
         fig, ax = plt.subplots()
@@ -174,7 +192,10 @@ def company_page(ticker):
     # Diğer metrikler
     for m in metrics_for_chart:
         if m in ["Fiyat", "Tahmin"]: continue
-        d = metric_data[m]
+        d = metric_data[m].dropna(subset=['period', 'value'])
+        d = d[(d['value'].notnull()) & (d['period'].notnull())]
+        d = d[d['value'] != 'None']
+        d = d[d['period'] != 'None']
         if not d.empty:
             st.markdown(f"#### {m}")
             fig, ax = plt.subplots()
@@ -208,9 +229,12 @@ def radar_page():
     wanted = ["Fiyat", "Tahmin", "MCap/CATS", "EBIT Margin", "FCF Margin", "CATS"]
     def get_latest(ticker, metric):
         d = df[(df['ticker'] == ticker) & (df['metric'] == metric)].sort_values('period')
-        if d.empty: return None, None
-        v = d['value'].values
-        return (float(v[-1]) if len(v) > 0 else None), (float(v[-2]) if len(v) > 1 else None)
+        vals = d['value'].dropna().values
+        if len(vals) == 0:
+            return None, None
+        cur = tofloat(vals[-1])
+        prev = tofloat(vals[-2]) if len(vals) > 1 else None
+        return cur, prev
     radar_list = []
     for t in all_tickers:
         # Kriterleri uygula
@@ -245,7 +269,6 @@ if st.session_state['nav'] == "company":
     company_page(st.session_state['selected_ticker'])
 elif st.session_state['nav'] == "favorites":
     favorites_page()
-    # nav state sıfırla ki linke tıklayınca geri gelsin
     st.session_state['nav'] = "company"
 elif st.session_state['nav'] == "radar":
     radar_page()
