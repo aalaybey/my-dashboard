@@ -12,11 +12,6 @@ st.set_page_config(layout="wide", page_title="Şirket Dashboard")
 NAMES       = ["Alper"]
 USERNAMES   = st.secrets["USERNAMES"]
 HASHED_PWS  = st.secrets["HASHED_PWS"]
-DB_HOST = st.secrets["DB_HOST"]
-DB_NAME = st.secrets["DB_NAME"]
-DB_USER = st.secrets["DB_USER"]
-DB_PASS = st.secrets["DB_PASS"]
-DB_PORT = st.secrets["DB_PORT"]
 
 credentials = {
     "usernames": {
@@ -29,9 +24,8 @@ authenticator = stauth.Authenticate(
     credentials,
     st.secrets["COOKIE_NAME"],
     st.secrets["SIGN_KEY"],
-    cookie_expiry_days=1,
-    cookie_secure=False,  # ← HTTP’de çalışması için EKLEDİK
-    cookie_samesite="lax",
+    cookie_expiry_days=30,   # daha uzun süreli hatırlama için süreyi uzatabilirsin
+    cookie_secure=True,      # HTTPS kullanıyorsan bunu True yap, HTTP kullanıyorsan False yap
 )
 
 authenticator.login(
@@ -42,8 +36,6 @@ authenticator.login(
         "Username":  "Kullanıcı adı",
         "Password":  "Şifre",
     },
-    key="auth_login",  # ← SABİT KEY!
-    single_session=False,
 )
 auth_status = st.session_state.get("authentication_status")
 
@@ -52,9 +44,13 @@ if auth_status is False:
     st.stop()
 elif auth_status is None:
     st.stop()
-authenticator.logout("Çıkış", "main", key="auth_logout")
+authenticator.logout("Çıkış", "main")
 
-
+DB_HOST = st.secrets["DB_HOST"]
+DB_NAME = st.secrets["DB_NAME"]
+DB_USER = st.secrets["DB_USER"]
+DB_PASS = st.secrets["DB_PASS"]
+DB_PORT = st.secrets["DB_PORT"]
 
 @st.cache_data(ttl=120)
 def load_metrics():
