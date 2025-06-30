@@ -27,7 +27,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
-authenticator.login(
+login_result = authenticator.login(
     "main",
     fields={
         "Form name": "Oturum Aç",
@@ -36,6 +36,15 @@ authenticator.login(
         "Password":  "Şifre",
     },
 )
+# login_result'un kaç elemanlı olduğunu tespit et
+if len(login_result) == 2:
+    name, auth_status = login_result
+elif len(login_result) == 3:
+    name, auth_status, username = login_result
+else:
+    st.error("Giriş sistemi ile ilgili beklenmeyen bir hata oluştu.")
+    st.stop()
+
 auth_status = st.session_state.get("authentication_status")
 
 if auth_status is False:
