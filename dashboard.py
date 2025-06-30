@@ -8,7 +8,7 @@ import streamlit_authenticator as stauth
 
 st.set_page_config(layout="wide", page_title="Şirket Dashboard")
 
-# ────────── KULLANICI ve DB AYARLARI ──────────
+# ───────── 1) KULLANICILAR ─────────
 NAMES       = ["Alper"]
 USERNAMES   = st.secrets["USERNAMES"]
 HASHED_PWS  = st.secrets["HASHED_PWS"]
@@ -27,6 +27,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
+# ───────── 2) GİRİŞ FORMU ─────────
 authenticator.login(
     "main",
     fields={
