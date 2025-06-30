@@ -294,7 +294,7 @@ def favorites_page():
 
 # ────────── RADAR SAYFASI ──────────
 def radar_page():
-    navbar()
+    searchbar()
     st.markdown("## 🕵️ Radar Listesi")
     df = metrics_df.copy()
     # 1) Sadece istenen metrikler
