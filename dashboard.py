@@ -24,11 +24,10 @@ authenticator = stauth.Authenticate(
     credentials,
     st.secrets["COOKIE_NAME"],
     st.secrets["SIGN_KEY"],
-    cookie_expiry_days=30,   # daha uzun süreli hatırlama için süreyi uzatabilirsin
-    cookie_secure=True,      # HTTPS kullanıyorsan bunu True yap, HTTP kullanıyorsan False yap
+    cookie_expiry_days=1,
 )
 
-name, auth_status, username = authenticator.login(
+authenticator.login(
     "main",
     fields={
         "Form name": "Oturum Aç",
@@ -37,13 +36,13 @@ name, auth_status, username = authenticator.login(
         "Password":  "Şifre",
     },
 )
+auth_status = st.session_state.get("authentication_status")
 
 if auth_status is False:
     st.error("❌ Kullanıcı adı veya şifre hatalı")
     st.stop()
 elif auth_status is None:
     st.stop()
-# Oturum açıkken çıkış butonu
 authenticator.logout("Çıkış", "main")
 
 DB_HOST = st.secrets["DB_HOST"]
@@ -100,55 +99,14 @@ def set_fav(ticker):
 def go_ticker(ticker):
     st.session_state['selected_ticker'] = ticker
 
-# ────────── SEARCH BAR (NAVBAR YERİNE) ──────────
-def searchbar():
-    st.markdown(
-        """
-        <style>
-        .stTextInput > div > div > input {
-            font-size: 22px !important;
-            padding: 12px 8px;
-        }
-        @media (max-width:600px){
-            .stTextInput > div > div > input {
-                font-size: 18px !important;
-                padding: 14px 6px;
-            }
-        }
-        </style>
-        """, unsafe_allow_html=True
-    )
-
-    c1, c2, c3, c4 = st.columns([2, 4, 1, 1])
-
-    # Arama kutusu
+# ────────── NAVBAR ──────────
+def navbar():
+    c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
     with c1:
-        search = st.text_input("Şirket Ara", "", key="searchbar", placeholder="Şirket ticker yaz...", label_visibility="collapsed")
-    # Filter tickers (case-insensitive, substring)
-    search_lower = search.strip().lower()
-    matched_tickers = [t for t in all_tickers if search_lower in t.lower()] if search_lower else all_tickers
-
-    if matched_tickers:
-        # Seçili ticker matched listede değilse, otomatik ilkine geç
-        if st.session_state['selected_ticker'] not in matched_tickers:
-            st.session_state['selected_ticker'] = matched_tickers[0]
-        sel = st.selectbox(
-            "Şirket Seç", matched_tickers,
-            index=matched_tickers.index(st.session_state['selected_ticker']),
-            key="select_ticker", label_visibility="collapsed"
-        )
-        if sel != st.session_state['selected_ticker']:
-            go_ticker(sel)
-            st.rerun()
-    else:
-        st.warning("Hiçbir şirket bulunamadı.")
-
-    # Fav, yenile
-    with c2:
         ticker = st.session_state['selected_ticker']
         is_fav = ticker in st.session_state['favorites']
         star = "★" if is_fav else "☆"
-        col_star, col_refresh = st.columns([6, 1], gap="small")
+        col_star, col_refresh = st.columns([4, 1], gap="small")
         with col_star:
             if st.button(star, help="Favorilere ekle/çıkar", key=f"fav_{ticker}", use_container_width=True):
                 set_fav(ticker)
@@ -156,12 +114,16 @@ def searchbar():
             if st.button("🔄", help="Verileri Yenile", key=f"refresh_{ticker}", use_container_width=True):
                 st.cache_data.clear()
                 st.rerun()
-    # Radar
+    with c2:
+        # Search bar
+        sel = st.selectbox("Search Bar", all_tickers, index=all_tickers.index(st.session_state['selected_ticker']), key="select_ticker", label_visibility="collapsed")
+        if sel != st.session_state['selected_ticker']:
+            go_ticker(sel)
+            st.rerun()
     with c3:
         if st.button("Radar"):
             st.session_state['nav'] = "radar"
             st.rerun()
-    # Favoriler
     with c4:
         if st.button("Favoriler"):
             st.session_state['nav'] = "favorites"
@@ -183,7 +145,7 @@ def tofloat(x):
 
 # ────────── MAIN BODY ──────────
 def company_page(ticker):
-    searchbar()
+    navbar()
     info = info_df[info_df['ticker'] == ticker].iloc[0]
     st.markdown(f"### {ticker}  ")
     # Company Info Card
@@ -244,6 +206,7 @@ def company_page(ticker):
         plt.tight_layout()
         st.pyplot(fig)
 
+
     # Diğer metrikler
     for m in metrics_for_chart:
         if m in ["Fiyat", "Tahmin"]: continue
@@ -263,6 +226,7 @@ def company_page(ticker):
             plt.tight_layout()
             st.pyplot(fig)
 
+
     st.markdown("---")
     # Alt: Ham metrik tablo
     st.markdown("#### Tüm Ham Veriler")
@@ -270,7 +234,7 @@ def company_page(ticker):
 
 # ────────── FAVORİLER SAYFASI ──────────
 def favorites_page():
-    searchbar()
+    navbar()
     favs = list(st.session_state['favorites'])
     st.markdown("## ⭐ Favori Şirketler")
     if not favs:
@@ -281,86 +245,50 @@ def favorites_page():
 
 # ────────── RADAR SAYFASI ──────────
 def radar_page():
-    searchbar()
+    navbar()
     st.markdown("## 🕵️ Radar Listesi")
     df = metrics_df.copy()
+    # 1) Sadece istenen metrikler
     wanted = ["Fiyat", "Tahmin", "MCap/CATS", "EBIT Margin", "FCF Margin", "CATS"]
-
-    # --- YARDIMCI FONKSİYONLAR ---
-    import re
-    def period_to_sortable(period):
-        if pd.isna(period):
-            return (0, 0)
-        s = str(period)
-        m = re.search(r'(20\d{2}).*?Q([1-4])', s)
-        if m:
-            return (int(m.group(1)), int(m.group(2)))
-        m = re.search(r'Q([1-4]).*?(20\d{2})', s)
-        if m:
-            return (int(m.group(2)), int(m.group(1)))
-        return (0, 0)
-
-    def get_last_forecast_and_prev_price(df, ticker):
-        d_tahmin = df[(df['ticker'] == ticker) & (df['metric'] == "Tahmin")].copy()
-        d_fiyat = df[(df['ticker'] == ticker) & (df['metric'] == "Fiyat")].copy()
-        if d_tahmin.empty or d_fiyat.empty:
+    def get_latest(ticker, metric):
+        d = df[(df['ticker'] == ticker) & (df['metric'] == metric)].sort_values('period')
+        vals = d['value'].dropna().values
+        if len(vals) == 0:
             return None, None
-        d_tahmin['period_sort'] = d_tahmin['period'].apply(period_to_sortable)
-        d_tahmin = d_tahmin.sort_values('period_sort')
-        d_fiyat['period_sort'] = d_fiyat['period'].apply(period_to_sortable)
-        d_fiyat = d_fiyat.sort_values('period_sort')
-        last_forecast_row = d_tahmin.iloc[-1]
-        last_period = last_forecast_row['period']
-        last_value = tofloat(last_forecast_row['value'])
-        fiyat_periods_sortable = list(d_fiyat['period_sort'])
-        last_sort = period_to_sortable(last_period)
-        prev_idx = None
-        for i in range(len(fiyat_periods_sortable)):
-            if fiyat_periods_sortable[i] < last_sort:
-                prev_idx = i
-        if prev_idx is None:
-            return last_value, None
-        prev_fiyat_value = tofloat(d_fiyat.iloc[prev_idx]['value'])
-        return last_value, prev_fiyat_value
-
-    # --- RADAR LİSTESİ ---
+        cur = tofloat(vals[-1])
+        prev = tofloat(vals[-2]) if len(vals) > 1 else None
+        return cur, prev
     radar_list = []
     for t in all_tickers:
-        tahmin_cur, fiyat_prev = get_last_forecast_and_prev_price(df, t)
-        # 1. Tahmin son > bir önceki fiyat
+        # Kriterleri uygula
+        fiyat_cur, fiyat_prev = get_latest(t, "Fiyat")
+        tahmin_cur, tahmin_prev = get_latest(t, "Tahmin")
+        mcap_cats_cur, mcap_cats_prev = get_latest(t, "MCap/CATS")
+        ebit_margin_cur, ebit_margin_prev = get_latest(t, "EBIT Margin")
+        fcf_margin_cur, fcf_margin_prev = get_latest(t, "FCF Margin")
+        cats_cur, cats_prev = get_latest(t, "CATS")
+        capex_amort_cur, capex_amort_prev = get_latest(t, "Capex/Amort")  # <-- YENİ EKLEME
+        # 1. Tahmin son > fiyat son-1
         if tahmin_cur is None or fiyat_prev is None or tahmin_cur <= fiyat_prev: continue
-
-        # DİĞER KRİTERLER (aşağıdakiler eski gibi devam edebilir)
-        def get_latest(metric):
-            d = df[(df['ticker'] == t) & (df['metric'] == metric)].sort_values('period')
-            vals = d['value'].dropna().values
-            if len(vals) == 0:
-                return None, None
-            cur = tofloat(vals[-1])
-            prev = tofloat(vals[-2]) if len(vals) > 1 else None
-            return cur, prev
-
-        tahmin_cur_, tahmin_prev = get_latest("Tahmin")
-        mcap_cats_cur, mcap_cats_prev = get_latest("MCap/CATS")
-        ebit_margin_cur, ebit_margin_prev = get_latest("EBIT Margin")
-        fcf_margin_cur, fcf_margin_prev = get_latest("FCF Margin")
-        cats_cur, cats_prev = get_latest("CATS")
-        capex_amort_cur, capex_amort_prev = get_latest("Capex/Amort")
-
-        if tahmin_prev is None or tahmin_cur_ is None or tahmin_cur_ <= tahmin_prev: continue
+        # 2. Tahmin son > tahmin son-1
+        if tahmin_prev is None or tahmin_cur <= tahmin_prev: continue
+        # 3. MCap/CATS son > 0, ve eğer bir önceki de pozitifse son < son-1
         if mcap_cats_cur is None or mcap_cats_cur <= 0: continue
         if mcap_cats_prev is not None and mcap_cats_prev > 0 and not (mcap_cats_cur < mcap_cats_prev): continue
+        # 4. EBIT Margin son > son-1
         if ebit_margin_cur is None or ebit_margin_prev is None or ebit_margin_cur <= ebit_margin_prev: continue
+        # 5. FCF Margin son > son-1
         if fcf_margin_cur is None or fcf_margin_prev is None or fcf_margin_cur <= fcf_margin_prev: continue
+        # 6. CATS son > son-1
         if cats_cur is None or cats_prev is None or cats_cur <= cats_prev: continue
+        # 7. Capex/Amort son < Capex/Amort son-1  ← EKLEDİĞİN KRİTER
         if capex_amort_cur is None or capex_amort_prev is None or capex_amort_cur >= capex_amort_prev: continue
         radar_list.append(t)
     if not radar_list:
         st.info("Radar kriterlerini sağlayan şirket yok.")
     else:
-        st.markdown("### Radar Şirketleri")
         for t in radar_list:
-            st.write(t)  # Bu sadece düz metin! Link yok.
+            st.markdown(f"- [{t}](?selected_ticker={t})", unsafe_allow_html=True)
 
 # --- Routing ---
 if st.session_state['nav'] == "company":
