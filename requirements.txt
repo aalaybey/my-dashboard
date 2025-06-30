@@ -1,5 +1,5 @@
 streamlit
-streamlit-authenticator==0.3.2
+streamlit-authenticator
 psycopg2-binary
 pandas
 matplotlib

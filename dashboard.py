@@ -28,15 +28,18 @@ authenticator = stauth.Authenticate(
 )
 
 # ───────── 2) GİRİŞ FORMU ─────────
-authenticator.login(
-    "main",
-    fields={
+# ────────── GİRİŞ FORMU (streamlit-authenticator 0.3.2) ──────────
+name, auth_status, username = authenticator.login(
+    "Oturum Aç",      # form_name  → form başlığı
+    "main",           # location   → "main" ya da "sidebar"
+    fields={          # İSTEĞE BAĞLI: buton/etiket Türkçeleştirme
         "Form name": "Oturum Aç",
         "Login":     "Giriş",
         "Username":  "Kullanıcı adı",
         "Password":  "Şifre",
     },
 )
+
 auth_status = st.session_state.get("authentication_status")
 
 if auth_status is False:
