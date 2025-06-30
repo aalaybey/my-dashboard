@@ -283,179 +283,86 @@ def favorites_page():
 
 # ────────── RADAR SAYFASI ──────────
 def radar_page():
-    # --- STATE: radar şirketleri ---
-    if "radar_list" not in st.session_state:
-        st.session_state["radar_list"] = []
-
-    # --- Listeyi güncelleyen fonksiyon ---
-    def calculate_radar_list():
-        df = metrics_df.copy()
-        import re
-        def period_to_sortable(period):
-            if pd.isna(period):
-                return (0, 0)
-            s = str(period)
-            m = re.search(r'(20\d{2}).*?Q([1-4])', s)
-            if m:
-                return (int(m.group(1)), int(m.group(2)))
-            m = re.search(r'Q([1-4]).*?(20\d{2})', s)
-            if m:
-                return (int(m.group(2)), int(m.group(1)))
-            return (0, 0)
-
-        def get_last_forecast_and_prev_price(df, ticker):
-            d_tahmin = df[(df['ticker'] == ticker) & (df['metric'] == "Tahmin")].copy()
-            d_fiyat = df[(df['ticker'] == ticker) & (df['metric'] == "Fiyat")].copy()
-            if d_tahmin.empty or d_fiyat.empty:
-                return None, None
-            d_tahmin['period_sort'] = d_tahmin['period'].apply(period_to_sortable)
-            d_tahmin = d_tahmin.sort_values('period_sort')
-            d_fiyat['period_sort'] = d_fiyat['period'].apply(period_to_sortable)
-            d_fiyat = d_fiyat.sort_values('period_sort')
-            last_forecast_row = d_tahmin.iloc[-1]
-            last_period = last_forecast_row['period']
-            last_value = tofloat(last_forecast_row['value'])
-            fiyat_periods_sortable = list(d_fiyat['period_sort'])
-            last_sort = period_to_sortable(last_period)
-            prev_idx = None
-            for i in range(len(fiyat_periods_sortable)):
-                if fiyat_periods_sortable[i] < last_sort:
-                    prev_idx = i
-            if prev_idx is None:
-                return last_value, None
-            prev_fiyat_value = tofloat(d_fiyat.iloc[prev_idx]['value'])
-            return last_value, prev_fiyat_value
-
-        radar_list = []
-        for t in all_tickers:
-            tahmin_cur, fiyat_prev = get_last_forecast_and_prev_price(df, t)
-            if tahmin_cur is None or fiyat_prev is None or tahmin_cur <= fiyat_prev: continue
-
-            def get_latest(metric):
-                d = df[(df['ticker'] == t) & (df['metric'] == metric)].sort_values('period')
-                vals = d['value'].dropna().values
-                if len(vals) == 0:
-                    return None, None
-                cur = tofloat(vals[-1])
-                prev = tofloat(vals[-2]) if len(vals) > 1 else None
-                return cur, prev
-
-            tahmin_cur_, tahmin_prev = get_latest("Tahmin")
-            mcap_cats_cur, mcap_cats_prev = get_latest("MCap/CATS")
-            ebit_margin_cur, ebit_margin_prev = get_latest("EBIT Margin")
-            fcf_margin_cur, fcf_margin_prev = get_latest("FCF Margin")
-            cats_cur, cats_prev = get_latest("CATS")
-            capex_amort_cur, capex_amort_prev = get_latest("Capex/Amort")
-
-            if tahmin_prev is None or tahmin_cur_ is None or tahmin_cur_ <= tahmin_prev: continue
-            if mcap_cats_cur is None or mcap_cats_cur <= 0: continue
-            if mcap_cats_prev is not None and mcap_cats_prev > 0 and not (mcap_cats_cur < mcap_cats_prev): continue
-            if ebit_margin_cur is None or ebit_margin_prev is None or ebit_margin_cur <= ebit_margin_prev: continue
-            if fcf_margin_cur is None or fcf_margin_prev is None or fcf_margin_cur <= fcf_margin_prev: continue
-            if cats_cur is None or cats_prev is None or cats_cur <= cats_prev: continue
-            if capex_amort_cur is None or capex_amort_prev is None or capex_amort_cur >= capex_amort_prev: continue
-            radar_list.append(t)
-        return radar_list
-
-    # --- GÜNCELLE BUTONU ve RADAR ŞİRKETLERİ LİSTESİ ---
-    c1, c2 = st.columns([8, 1])
-    with c1:
-        st.markdown("### Radar Şirketleri")
-        if st.session_state["radar_list"]:
-            for t in st.session_state["radar_list"]:
-                st.write(t)
-        else:
-            st.info("Radar kriterlerini sağlayan şirket yok.")
-    with c2:
-        if st.button("Listeyi Güncelle"):
-            st.session_state["radar_list"] = calculate_radar_list()
-            st.rerun()
-
-    # --- SAYFA YÜKLENİRKEN RADAR LİSTESİ BOŞSA OLUŞTUR ---
-    if not st.session_state["radar_list"]:
-        st.session_state["radar_list"] = calculate_radar_list()
-
-    # --- SEARCHBAR & ŞİRKET SEÇİMİ ---
     searchbar()
+    st.markdown("## 🕵️ Radar Listesi")
+    df = metrics_df.copy()
+    wanted = ["Fiyat", "Tahmin", "MCap/CATS", "EBIT Margin", "FCF Margin", "CATS"]
 
-    # --- SEÇİLEN ŞİRKETİN DETAYLARI (company_page içeriği) ---
-    ticker = st.session_state['selected_ticker']
-    info = info_df[info_df['ticker'] == ticker].iloc[0]
-    st.markdown(f"### {ticker}  ")
-    infoc1, infoc2 = st.columns([2, 3])
-    with infoc1:
-        st.markdown(f"""
-        <table style="font-size:16px;">
-        <tr><td><b>Sector</b></td><td>{info['sector']}</td></tr>
-        <tr><td><b>Industry</b></td><td>{info['industry']}</td></tr>
-        <tr><td><b>Employees</b></td><td>{info['employees']:,}</td></tr>
-        <tr><td><b>Earnings Date</b></td><td>{info['earnings_date']}</td></tr>
-        </table>
-        """, unsafe_allow_html=True)
-    with infoc2:
-        st.markdown("#### Summary")
-        st.markdown(f"<div style='font-size:13px'>{info['summary']}</div>", unsafe_allow_html=True)
-    st.markdown("---")
+    # --- YARDIMCI FONKSİYONLAR ---
+    import re
+    def period_to_sortable(period):
+        if pd.isna(period):
+            return (0, 0)
+        s = str(period)
+        m = re.search(r'(20\d{2}).*?Q([1-4])', s)
+        if m:
+            return (int(m.group(1)), int(m.group(2)))
+        m = re.search(r'Q([1-4]).*?(20\d{2})', s)
+        if m:
+            return (int(m.group(2)), int(m.group(1)))
+        return (0, 0)
 
-    metrics_for_chart = [
-        "Fiyat", "Tahmin", "MCap/CATS", "Capex/Amort", "EBIT Margin", "FCF Margin",
-        "Gross Margin", "CATS", "Satış Çeyrek", "EBIT Çeyrek", "Net Kar Çeyrek"
-    ]
-    df = metrics_df[metrics_df['ticker'] == ticker]
-    metric_data = {m: df[df['metric'] == m].sort_values('period') for m in metrics_for_chart}
+    def get_last_forecast_and_prev_price(df, ticker):
+        d_tahmin = df[(df['ticker'] == ticker) & (df['metric'] == "Tahmin")].copy()
+        d_fiyat = df[(df['ticker'] == ticker) & (df['metric'] == "Fiyat")].copy()
+        if d_tahmin.empty or d_fiyat.empty:
+            return None, None
+        d_tahmin['period_sort'] = d_tahmin['period'].apply(period_to_sortable)
+        d_tahmin = d_tahmin.sort_values('period_sort')
+        d_fiyat['period_sort'] = d_fiyat['period'].apply(period_to_sortable)
+        d_fiyat = d_fiyat.sort_values('period_sort')
+        last_forecast_row = d_tahmin.iloc[-1]
+        last_period = last_forecast_row['period']
+        last_value = tofloat(last_forecast_row['value'])
+        fiyat_periods_sortable = list(d_fiyat['period_sort'])
+        last_sort = period_to_sortable(last_period)
+        prev_idx = None
+        for i in range(len(fiyat_periods_sortable)):
+            if fiyat_periods_sortable[i] < last_sort:
+                prev_idx = i
+        if prev_idx is None:
+            return last_value, None
+        prev_fiyat_value = tofloat(d_fiyat.iloc[prev_idx]['value'])
+        return last_value, prev_fiyat_value
 
-    # Fiyat & Tahmin birlikte çizgi grafiği
-    fiyat = metric_data["Fiyat"].dropna(subset=['period', 'value'])
-    fiyat = fiyat[(fiyat['value'].notnull()) & (fiyat['period'].notnull())]
-    fiyat = fiyat[fiyat['value'] != 'None']
-    fiyat = fiyat[fiyat['period'] != 'None']
+    # --- RADAR LİSTESİ ---
+    radar_list = []
+    for t in all_tickers:
+        tahmin_cur, fiyat_prev = get_last_forecast_and_prev_price(df, t)
+        # 1. Tahmin son > bir önceki fiyat
+        if tahmin_cur is None or fiyat_prev is None or tahmin_cur <= fiyat_prev: continue
 
-    tahmin = metric_data["Tahmin"].dropna(subset=['period', 'value'])
-    tahmin = tahmin[(tahmin['value'].notnull()) & (tahmin['period'].notnull())]
-    tahmin = tahmin[tahmin['value'] != 'None']
-    tahmin = tahmin[tahmin['period'] != 'None']
+        # DİĞER KRİTERLER (aşağıdakiler eski gibi devam edebilir)
+        def get_latest(metric):
+            d = df[(df['ticker'] == t) & (df['metric'] == metric)].sort_values('period')
+            vals = d['value'].dropna().values
+            if len(vals) == 0:
+                return None, None
+            cur = tofloat(vals[-1])
+            prev = tofloat(vals[-2]) if len(vals) > 1 else None
+            return cur, prev
 
-    if not fiyat.empty or not tahmin.empty:
-        st.markdown("#### Fiyat & Tahmin")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        if not fiyat.empty:
-            fiyat = fiyat.copy()
-            fiyat['value'] = fiyat['value'].astype(float)
-            fiyat = fiyat.sort_values('period')
-            ax.plot(fiyat['period'], fiyat['value'], marker='o', label="Fiyat", color='royalblue')
-        if not tahmin.empty:
-            tahmin = tahmin.copy()
-            tahmin['value'] = tahmin['value'].astype(float)
-            tahmin = tahmin.sort_values('period')
-            ax.plot(tahmin['period'], tahmin['value'], marker='o', label="Tahmin", color='chocolate')
-        ax.set_ylabel("Değer")
-        ax.legend()
-        plt.xticks(rotation=30)
-        plt.tight_layout()
-        st.pyplot(fig)
+        tahmin_cur_, tahmin_prev = get_latest("Tahmin")
+        mcap_cats_cur, mcap_cats_prev = get_latest("MCap/CATS")
+        ebit_margin_cur, ebit_margin_prev = get_latest("EBIT Margin")
+        fcf_margin_cur, fcf_margin_prev = get_latest("FCF Margin")
+        cats_cur, cats_prev = get_latest("CATS")
+        capex_amort_cur, capex_amort_prev = get_latest("Capex/Amort")
 
-    for m in metrics_for_chart:
-        if m in ["Fiyat", "Tahmin"]: continue
-        d = metric_data[m].dropna(subset=['period', 'value'])
-        d = d[(d['value'].notnull()) & (d['period'].notnull())]
-        d = d[d['value'] != 'None']
-        d = d[d['period'] != 'None']
-        if not d.empty:
-            d = d.copy()
-            d['value'] = d['value'].astype(float)
-            d = d.sort_values('period')
-            st.markdown(f"#### {m}")
-            fig, ax = plt.subplots()
-            ax.plot(d['period'], d['value'], marker='o')
-            ax.set_ylabel("Değer")
-            plt.xticks(rotation=30)
-            plt.tight_layout()
-            st.pyplot(fig)
-
-    st.markdown("---")
-    st.markdown("#### Tüm Ham Veriler")
-    st.dataframe(df.pivot(index="period", columns="metric", values="value").sort_index(), use_container_width=True)
-
+        if tahmin_prev is None or tahmin_cur_ is None or tahmin_cur_ <= tahmin_prev: continue
+        if mcap_cats_cur is None or mcap_cats_cur <= 0: continue
+        if mcap_cats_prev is not None and mcap_cats_prev > 0 and not (mcap_cats_cur < mcap_cats_prev): continue
+        if ebit_margin_cur is None or ebit_margin_prev is None or ebit_margin_cur <= ebit_margin_prev: continue
+        if fcf_margin_cur is None or fcf_margin_prev is None or fcf_margin_cur <= fcf_margin_prev: continue
+        if cats_cur is None or cats_prev is None or cats_cur <= cats_prev: continue
+        if capex_amort_cur is None or capex_amort_prev is None or capex_amort_cur >= capex_amort_prev: continue
+        radar_list.append(t)
+    if not radar_list:
+        st.info("Radar kriterlerini sağlayan şirket yok.")
+    else:
+        st.markdown("### Radar Şirketleri")
+        for t in radar_list:
+            st.write(t)  # Bu sadece düz metin! Link yok.
 
 # --- Routing ---
 if st.session_state['nav'] == "company":
@@ -465,5 +372,6 @@ elif st.session_state['nav'] == "favorites":
     st.session_state['nav'] = "company"
 elif st.session_state['nav'] == "radar":
     radar_page()
+    st.session_state['nav'] = "company"
 else:
     company_page(st.session_state['selected_ticker'])
