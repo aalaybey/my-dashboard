@@ -30,6 +30,8 @@ authenticator = stauth.Authenticate(
     st.secrets["COOKIE_NAME"],
     st.secrets["SIGN_KEY"],
     cookie_expiry_days=1,
+    cookie_secure=False,  # ← HTTP’de çalışması için EKLEDİK
+    cookie_samesite="lax",
 )
 
 authenticator.login(
