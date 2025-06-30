@@ -360,9 +360,9 @@ def radar_page():
     if not radar_list:
         st.info("Radar kriterlerini sağlayan şirket yok.")
     else:
+        st.markdown("### Radar Şirketleri")
         for t in radar_list:
-            st.markdown(f"- [{t}](?selected_ticker={t})", unsafe_allow_html=True)
-
+            st.write(t)  # Bu sadece düz metin! Link yok.
 
 # --- Routing ---
 if st.session_state['nav'] == "company":
@@ -372,6 +372,5 @@ elif st.session_state['nav'] == "favorites":
     st.session_state['nav'] = "company"
 elif st.session_state['nav'] == "radar":
     radar_page()
-    st.session_state['nav'] = "company"
 else:
     company_page(st.session_state['selected_ticker'])
