@@ -27,7 +27,7 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
-login_result = authenticator.login(
+authenticator.login(
     "main",
     fields={
         "Form name": "Oturum Aç",
@@ -36,15 +36,6 @@ login_result = authenticator.login(
         "Password":  "Şifre",
     },
 )
-# login_result'un kaç elemanlı olduğunu tespit et
-if len(login_result) == 2:
-    name, auth_status = login_result
-elif len(login_result) == 3:
-    name, auth_status, username = login_result
-else:
-    st.error("Giriş sistemi ile ilgili beklenmeyen bir hata oluştu.")
-    st.stop()
-
 auth_status = st.session_state.get("authentication_status")
 
 if auth_status is False:
@@ -108,14 +99,55 @@ def set_fav(ticker):
 def go_ticker(ticker):
     st.session_state['selected_ticker'] = ticker
 
-# ────────── NAVBAR ──────────
-def navbar():
-    c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
+# ────────── SEARCH BAR (NAVBAR YERİNE) ──────────
+def searchbar():
+    st.markdown(
+        """
+        <style>
+        .stTextInput > div > div > input {
+            font-size: 22px !important;
+            padding: 12px 8px;
+        }
+        @media (max-width:600px){
+            .stTextInput > div > div > input {
+                font-size: 18px !important;
+                padding: 14px 6px;
+            }
+        }
+        </style>
+        """, unsafe_allow_html=True
+    )
+
+    c1, c2, c3, c4 = st.columns([2, 4, 1, 1])
+
+    # Arama kutusu
     with c1:
+        search = st.text_input("Şirket Ara", "", key="searchbar", placeholder="Şirket ticker yaz...", label_visibility="collapsed")
+    # Filter tickers (case-insensitive, substring)
+    search_lower = search.strip().lower()
+    matched_tickers = [t for t in all_tickers if search_lower in t.lower()] if search_lower else all_tickers
+
+    if matched_tickers:
+        # Seçili ticker matched listede değilse, otomatik ilkine geç
+        if st.session_state['selected_ticker'] not in matched_tickers:
+            st.session_state['selected_ticker'] = matched_tickers[0]
+        sel = st.selectbox(
+            "Şirket Seç", matched_tickers,
+            index=matched_tickers.index(st.session_state['selected_ticker']),
+            key="select_ticker", label_visibility="collapsed"
+        )
+        if sel != st.session_state['selected_ticker']:
+            go_ticker(sel)
+            st.rerun()
+    else:
+        st.warning("Hiçbir şirket bulunamadı.")
+
+    # Fav, yenile
+    with c2:
         ticker = st.session_state['selected_ticker']
         is_fav = ticker in st.session_state['favorites']
         star = "★" if is_fav else "☆"
-        col_star, col_refresh = st.columns([4, 1], gap="small")
+        col_star, col_refresh = st.columns([6, 1], gap="small")
         with col_star:
             if st.button(star, help="Favorilere ekle/çıkar", key=f"fav_{ticker}", use_container_width=True):
                 set_fav(ticker)
@@ -123,16 +155,12 @@ def navbar():
             if st.button("🔄", help="Verileri Yenile", key=f"refresh_{ticker}", use_container_width=True):
                 st.cache_data.clear()
                 st.rerun()
-    with c2:
-        # Search bar
-        sel = st.selectbox("Search Bar", all_tickers, index=all_tickers.index(st.session_state['selected_ticker']), key="select_ticker", label_visibility="collapsed")
-        if sel != st.session_state['selected_ticker']:
-            go_ticker(sel)
-            st.rerun()
+    # Radar
     with c3:
         if st.button("Radar"):
             st.session_state['nav'] = "radar"
             st.rerun()
+    # Favoriler
     with c4:
         if st.button("Favoriler"):
             st.session_state['nav'] = "favorites"
@@ -154,7 +182,7 @@ def tofloat(x):
 
 # ────────── MAIN BODY ──────────
 def company_page(ticker):
-    navbar()
+    searchbar()
     info = info_df[info_df['ticker'] == ticker].iloc[0]
     st.markdown(f"### {ticker}  ")
     # Company Info Card
@@ -215,7 +243,6 @@ def company_page(ticker):
         plt.tight_layout()
         st.pyplot(fig)
 
-
     # Diğer metrikler
     for m in metrics_for_chart:
         if m in ["Fiyat", "Tahmin"]: continue
@@ -235,7 +262,6 @@ def company_page(ticker):
             plt.tight_layout()
             st.pyplot(fig)
 
-
     st.markdown("---")
     # Alt: Ham metrik tablo
     st.markdown("#### Tüm Ham Veriler")
@@ -243,7 +269,7 @@ def company_page(ticker):
 
 # ────────── FAVORİLER SAYFASI ──────────
 def favorites_page():
-    navbar()
+    searchbar()
     favs = list(st.session_state['favorites'])
     st.markdown("## ⭐ Favori Şirketler")
     if not favs:
