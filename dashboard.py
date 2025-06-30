@@ -27,17 +27,26 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
-# --------------- SADECE ŞU BLOK (0.4+ UYUMLU) ---------------
-name, auth_status, username = authenticator.login(
-    "main",   # location (main | sidebar | unrendered)
+# --- eski satır SİL ---
+# name, auth_status, username = authenticator.login(...)
+
+# --- yeni blok (0.4.x uyumlu) ---
+authenticator.login(
+    "main",
     fields={
-        "Form name": "Oturum Aç",           # Form başlığı
-        "Login": "Giriş",                   # Buton
-        "Username": "Kullanıcı adı",        # Etiketler
+        "Form name": "Oturum Aç",
+        "Login": "Giriş",
+        "Username": "Kullanıcı adı",
         "Password": "Şifre",
     },
-    key="login-form"   # benzersiz widget anahtarı
+    key="login-form",
 )
+
+# 0.4.x'te sonuçlar session_state'te
+name         = st.session_state.get("name")
+auth_status  = st.session_state.get("authentication_status")
+username     = st.session_state.get("username")
+
 # -------------------------------------------------------------
 
 
