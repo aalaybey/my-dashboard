@@ -12,6 +12,11 @@ st.set_page_config(layout="wide", page_title="Şirket Dashboard")
 NAMES       = ["Alper"]
 USERNAMES   = st.secrets["USERNAMES"]
 HASHED_PWS  = st.secrets["HASHED_PWS"]
+DB_HOST = st.secrets["DB_HOST"]
+DB_NAME = st.secrets["DB_NAME"]
+DB_USER = st.secrets["DB_USER"]
+DB_PASS = st.secrets["DB_PASS"]
+DB_PORT = st.secrets["DB_PORT"]
 
 credentials = {
     "usernames": {
@@ -35,6 +40,8 @@ authenticator.login(
         "Username":  "Kullanıcı adı",
         "Password":  "Şifre",
     },
+    key="auth_login",  # ← SABİT KEY!
+    single_session=False,
 )
 auth_status = st.session_state.get("authentication_status")
 
@@ -43,13 +50,9 @@ if auth_status is False:
     st.stop()
 elif auth_status is None:
     st.stop()
-authenticator.logout("Çıkış", "main")
+authenticator.logout("Çıkış", "main", key="auth_logout")
 
-DB_HOST = st.secrets["DB_HOST"]
-DB_NAME = st.secrets["DB_NAME"]
-DB_USER = st.secrets["DB_USER"]
-DB_PASS = st.secrets["DB_PASS"]
-DB_PORT = st.secrets["DB_PORT"]
+
 
 @st.cache_data(ttl=120)
 def load_metrics():
