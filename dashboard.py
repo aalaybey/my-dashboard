@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import streamlit_authenticator as stauth
 
-st.set_page_config(layout="centered", page_title="Şirket Dashboard")
+st.set_page_config(layout="wide", page_title="Şirket Dashboard")
 
 # ───────── 1) KULLANICILAR ─────────
 NAMES       = ["Alper"]
