@@ -36,8 +36,6 @@ name, auth_status, username = authenticator.login(
         "Username":  "Kullanıcı adı",
         "Password":  "Şifre",
     },
-    # ÖNEMLİ: Tekden çok sekme/cihaz desteği için single_session=False!
-    single_session=False,
 )
 
 if auth_status is False:
