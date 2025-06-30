@@ -28,7 +28,7 @@ authenticator = stauth.Authenticate(
     cookie_secure=True,      # HTTPS kullanıyorsan bunu True yap, HTTP kullanıyorsan False yap
 )
 
-authenticator.login(
+name, auth_status, username = authenticator.login(
     "main",
     fields={
         "Form name": "Oturum Aç",
@@ -36,14 +36,16 @@ authenticator.login(
         "Username":  "Kullanıcı adı",
         "Password":  "Şifre",
     },
+    # ÖNEMLİ: Tekden çok sekme/cihaz desteği için single_session=False!
+    single_session=False,
 )
-auth_status = st.session_state.get("authentication_status")
 
 if auth_status is False:
     st.error("❌ Kullanıcı adı veya şifre hatalı")
     st.stop()
 elif auth_status is None:
     st.stop()
+# Oturum açıkken çıkış butonu
 authenticator.logout("Çıkış", "main")
 
 DB_HOST = st.secrets["DB_HOST"]
