@@ -5,6 +5,8 @@ import psycopg2
 import matplotlib.pyplot as plt
 from collections import defaultdict
 import streamlit_authenticator as stauth
+import streamlit_authenticator as stauth
+st.warning(f"streamlit-authenticator sürümü: {stauth.__version__}")
 
 st.set_page_config(layout="wide", page_title="Şirket Dashboard")
 
