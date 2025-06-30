@@ -27,17 +27,16 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1,
 )
 
-# ───────── 2) GİRİŞ FORMU ─────────
-# ────────── GİRİŞ FORMU (streamlit-authenticator 0.3.2) ──────────
+# Yeni imza: location, fields, form_name ...
 name, auth_status, username = authenticator.login(
-    "Oturum Aç",      # form_name  → form başlığı
-    "main",           # location   → "main" ya da "sidebar"
-    fields={          # İSTEĞE BAĞLI: buton/etiket Türkçeleştirme
+    location="main",
+    fields={
         "Form name": "Oturum Aç",
         "Login":     "Giriş",
         "Username":  "Kullanıcı adı",
         "Password":  "Şifre",
     },
+    form_name="Oturum Aç",
 )
 
 auth_status = st.session_state.get("authentication_status")
