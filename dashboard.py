@@ -1,352 +1,263 @@
-# app.py
-import streamlit as st
+import dash
+import dash_bootstrap_components as dbc
+from dash import html, dcc, Input, Output, State, callback_context
 import pandas as pd
+import plotly.graph_objects as go
 import psycopg2
-import matplotlib.pyplot as plt
-from collections import defaultdict
-import streamlit_authenticator as stauth
+import os
+from dash.exceptions import PreventUpdate
+import dash_auth
 
-st.set_page_config(layout="wide", page_title="Şirket Dashboard")
-
-# ───────── 1) KULLANICILAR ─────────
-NAMES       = ["Alper"]
-USERNAMES   = st.secrets["USERNAMES"]
-HASHED_PWS  = st.secrets["HASHED_PWS"]
-
-credentials = {
-    "usernames": {
-        u: {"name": n, "password": pw}
-        for u, n, pw in zip(USERNAMES, NAMES, HASHED_PWS)
-    }
+# ---------------- SECRETS / LOGIN ----------------
+VALID_USERNAME_PASSWORD_PAIRS = {
+    os.environ.get("DASH_USER", "user"): os.environ.get("DASH_PASS", "1234")
 }
+# dash_auth ile basic login
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
 
-authenticator = stauth.Authenticate(
-    credentials,
-    st.secrets["COOKIE_NAME"],
-    st.secrets["SIGN_KEY"],
-    cookie_expiry_days=1,
-)
+server = app.server  # deploy için
 
-# --- eski satır SİL ---
-# name, auth_status, username = authenticator.login(...)
-
-# --- yeni blok (0.4.x uyumlu) ---
-authenticator.login(
-    "main",
-    fields={
-        "Form name": "Oturum Aç",
-        "Login": "Giriş",
-        "Username": "Kullanıcı adı",
-        "Password": "Şifre",
-    },
-    key="login-form",
-)
-
-# 0.4.x'te sonuçlar session_state'te
-name         = st.session_state.get("name")
-auth_status  = st.session_state.get("authentication_status")
-username     = st.session_state.get("username")
-
-# -------------------------------------------------------------
-
-
-auth_status = st.session_state.get("authentication_status")
-
-if auth_status is False:
-    st.error("❌ Kullanıcı adı veya şifre hatalı")
-    st.stop()
-elif auth_status is None:
-    st.stop()
-authenticator.logout("Çıkış", "main")
-
-DB_HOST = st.secrets["DB_HOST"]
-DB_NAME = st.secrets["DB_NAME"]
-DB_USER = st.secrets["DB_USER"]
-DB_PASS = st.secrets["DB_PASS"]
-DB_PORT = st.secrets["DB_PORT"]
-
-@st.cache_data(ttl=120)
-def load_metrics():
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        port=DB_PORT,
+# ----------------- DATABASE CONNECT ----------------
+def get_db_conn():
+    return psycopg2.connect(
+        host=os.environ.get("DB_HOST"),
+        database=os.environ.get("DB_NAME"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASS"),
+        port=os.environ.get("DB_PORT"),
     )
-    df = pd.read_sql("SELECT * FROM excel_metrics", conn)
-    conn.close()
-    return df
 
-@st.cache_data(ttl=120)
 def load_company_info():
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-        port=DB_PORT,
-    )
+    conn = get_db_conn()
     df = pd.read_sql("SELECT * FROM company_info", conn)
     conn.close()
     return df
 
-# ────────── VERİLERİ ÇEK ──────────
-with st.spinner("🔄 Veriler yükleniyor..."):
-    metrics_df = load_metrics()
-    info_df = load_company_info()
+def load_metrics():
+    conn = get_db_conn()
+    df = pd.read_sql("SELECT * FROM excel_metrics", conn)
+    conn.close()
+    return df
 
-all_tickers = sorted(info_df['ticker'].unique())
+# ------------ Uygulama içi cache ve state için global değişkenler ----------
+company_info = load_company_info()
+metrics = load_metrics()
+ALL_TICKERS = company_info['ticker'].sort_values().tolist()
+METRICS_FOR_CHART = [
+    "Fiyat", "Tahmin", "MCap/CATS", "Capex/Amort", "EBIT Margin",
+    "FCF Margin", "Gross Margin", "CATS", "Satış Çeyrek", "EBIT Çeyrek", "Net Kar Çeyrek"
+]
 
-# ────────── FAVORİLER / RADAR STATE ──────────
-if 'favorites' not in st.session_state:
-    st.session_state['favorites'] = set()
-if 'selected_ticker' not in st.session_state:
-    st.session_state['selected_ticker'] = all_tickers[0] if all_tickers else None
-
-def set_fav(ticker):
-    if ticker in st.session_state['favorites']:
-        st.session_state['favorites'].remove(ticker)
-    else:
-        st.session_state['favorites'].add(ticker)
-
-def go_ticker(ticker):
-    st.session_state['selected_ticker'] = ticker
-
-# ────────── SEARCH BAR (NAVBAR YERİNE) ──────────
-def searchbar():
-    st.markdown(
-        """
-        <style>
-        .stTextInput > div > div > input {
-            font-size: 22px !important;
-            padding: 12px 8px;
-        }
-        @media (max-width:600px){
-            .stTextInput > div > div > input {
-                font-size: 18px !important;
-                padding: 14px 6px;
-            }
-        }
-        </style>
-        """, unsafe_allow_html=True
+# --------------- Layout -----------------
+def company_dropdown(selected=None):
+    return dcc.Dropdown(
+        options=[{"label": t, "value": t} for t in ALL_TICKERS],
+        value=selected or (ALL_TICKERS[0] if ALL_TICKERS else None),
+        id="company-select",
+        style={"width": "100%", "margin-bottom": "10px"}
     )
 
-    c1, c2, c3, c4 = st.columns([2, 4, 1, 1])
+def star_icon(fav):
+    return html.I(className="bi bi-star-fill" if fav else "bi bi-star",
+                  style={"font-size": "2rem", "color": "#f7c948", "cursor": "pointer"},
+                  id="star-fav", n_clicks=0)
 
-    # Arama kutusu
-    with c1:
-        search = st.text_input("Şirket Ara", "", key="searchbar", placeholder="Şirket ticker yaz...", label_visibility="collapsed")
-    # Filter tickers (case-insensitive, substring)
-    search_lower = search.strip().lower()
-    matched_tickers = [t for t in all_tickers if search_lower in t.lower()] if search_lower else all_tickers
+def get_summary_html(summary):
+    # Summary'i satır kayması ile göster
+    if not summary: return ""
+    return html.Div(summary, style={"font-size": "1rem", "color": "#444", "whiteSpace": "pre-line"})
 
-    if matched_tickers:
-        # Seçili ticker matched listede değilse, otomatik ilkine geç
-        if st.session_state['selected_ticker'] not in matched_tickers:
-            st.session_state['selected_ticker'] = matched_tickers[0]
-        sel = st.selectbox(
-            "Şirket Seç", matched_tickers,
-            index=matched_tickers.index(st.session_state['selected_ticker']),
-            key="select_ticker", label_visibility="collapsed"
-        )
-        if sel != st.session_state['selected_ticker']:
-            go_ticker(sel)
-            st.rerun()
+# --------- Favori/Radar session için dash dcc.Store kullanılacak ----------
+app.layout = dbc.Container([
+    dcc.Store(id="fav-store", storage_type="session"),  # favoriler
+    dcc.Store(id="radar-store", storage_type="session"), # radar listesi
+    dcc.Location(id="url"),
+    dbc.Row([
+        dbc.Col([
+            html.Div([
+                html.H3("Şirket Dashboard", className="text-primary", style={"margin":"15px 0 5px"}),
+                dbc.Input(id="search-bar", placeholder="Şirket ticker ara...", type="text", debounce=True),
+            ]),
+        ], width=8),
+        dbc.Col([
+            dbc.Button("Radar", id="go-radar", color="secondary", outline=True, style={"margin-right":"6px"}),
+            dbc.Button("Favoriler", id="go-favs", color="secondary", outline=True)
+        ], width=4, style={"text-align":"right"})
+    ], align="center", style={"margin-bottom":"12px"}),
+    html.Hr(),
+    html.Div(id="main-content")
+], fluid=True, style={"maxWidth": "700px"})
+
+# ----------- CALLBACKS -----------
+
+# Search + Dropdown filtreleme
+@app.callback(
+    Output("company-select", "options"),
+    Output("company-select", "value"),
+    Input("search-bar", "value"),
+    State("company-select", "value"),
+)
+def filter_dropdown(search, current):
+    filtered = [t for t in ALL_TICKERS if (not search or search.lower() in t.lower())]
+    sel = filtered[0] if filtered and (current not in filtered) else current
+    return [{"label": t, "value": t} for t in filtered], sel or (filtered[0] if filtered else None)
+
+# Ana sayfa yönlendirme
+@app.callback(
+    Output("main-content", "children"),
+    Input("url", "pathname"),
+    Input("go-favs", "n_clicks"),
+    Input("go-radar", "n_clicks"),
+    Input("company-select", "value"),
+    State("fav-store", "data"),
+    State("radar-store", "data"),
+    prevent_initial_call=True
+)
+def render_page(path, favs_click, radar_click, ticker, favs, radar):
+    ctx = callback_context
+    if not ctx.triggered: raise PreventUpdate
+
+    trig = ctx.triggered[0]["prop_id"].split(".")[0]
+    # Ana company sayfası
+    if trig in ["company-select", "url"] and ticker:
+        return company_page_layout(ticker, favs or [])
+    elif trig == "go-favs":
+        return favorites_layout(favs or [])
+    elif trig == "go-radar":
+        return radar_layout(radar or [])
     else:
-        st.warning("Hiçbir şirket bulunamadı.")
+        return company_page_layout(ticker, favs or [])
 
-    # Fav, yenile
-    with c2:
-        ticker = st.session_state['selected_ticker']
-        is_fav = ticker in st.session_state['favorites']
-        star = "★" if is_fav else "☆"
-        col_star, col_refresh = st.columns([6, 1], gap="small")
-        with col_star:
-            if st.button(star, help="Favorilere ekle/çıkar", key=f"fav_{ticker}", use_container_width=True):
-                set_fav(ticker)
-        with col_refresh:
-            if st.button("🔄", help="Verileri Yenile", key=f"refresh_{ticker}", use_container_width=True):
-                st.cache_data.clear()
-                st.rerun()
-    # Radar
-    with c3:
-        if st.button("Radar"):
-            st.session_state['nav'] = "radar"
-            st.rerun()
-    # Favoriler
-    with c4:
-        if st.button("Favoriler"):
-            st.session_state['nav'] = "favorites"
-            st.rerun()
+# Şirket sayfası ve yıldız favori callback
+def company_page_layout(ticker, favs):
+    info = company_info[company_info['ticker'] == ticker].iloc[0]
+    df = metrics[metrics['ticker'] == ticker]
+    fav = ticker in favs
 
-# NAV State: company, radar, favorites
-if 'nav' not in st.session_state:
-    st.session_state['nav'] = 'company'
+    return html.Div([
+        html.Div([
+            company_dropdown(selected=ticker),
+            html.Span([
+                star_icon(fav),
+                html.Span(" Favorilere ekle/çıkar", style={"font-size":"1.2rem"})
+            ], style={"float":"right", "margin-top":"-55px"})
+        ]),
+        dbc.Row([
+            dbc.Col([
+                html.Table([
+                    html.Tr([html.Td(html.B("Sector")), html.Td(info['sector'])]),
+                    html.Tr([html.Td(html.B("Industry")), html.Td(info['industry'])]),
+                    html.Tr([html.Td(html.B("Employees")), html.Td(f"{info['employees']:,}")]),
+                    html.Tr([html.Td(html.B("Earnings Date")), html.Td(str(info['earnings_date']))]),
+                    html.Tr([html.Td(html.B("Market Cap")), html.Td(str(info['market_cap']))]),
+                    html.Tr([html.Td(html.B("Radar")), html.Td(str(info['radar']))]),
+                ], style={"font-size":"1.07rem"}),
+            ], width=5),
+            dbc.Col([
+                html.B("Summary"),
+                get_summary_html(info.get("summary", "")),
+            ], width=7)
+        ], style={"margin-bottom":"15px"}),
+        html.Hr(),
+        html.Div([
+            *[plot_metric(ticker, m, df) for m in METRICS_FOR_CHART]
+        ], style={"maxHeight":"70vh", "overflowY":"auto"})
+    ])
 
-# Yardımcı: float dönüşümünde hata olursa None dön
-def tofloat(x):
-    try:
-        if x is None: return None
-        if pd.isna(x): return None
-        if isinstance(x, str) and x.lower() in ('none', ''): return None
-        return float(x)
-    except:
-        return None
-
-# ────────── MAIN BODY ──────────
-def company_page(ticker):
-    searchbar()
-    info = info_df[info_df['ticker'] == ticker].iloc[0]
-    st.markdown(f"### {ticker}  ")
-    # Company Info Card
-    infoc1, infoc2 = st.columns([2, 3])
-    with infoc1:
-        st.markdown(f"""
-        <table style="font-size:16px;">
-        <tr><td><b>Sector</b></td><td>{info['sector']}</td></tr>
-        <tr><td><b>Industry</b></td><td>{info['industry']}</td></tr>
-        <tr><td><b>Employees</b></td><td>{info['employees']:,}</td></tr>
-        <tr><td><b>Earnings Date</b></td><td>{info['earnings_date']}</td></tr>
-        </table>
-        """, unsafe_allow_html=True)
-    with infoc2:
-        st.markdown("#### Summary")
-        st.markdown(f"<div style='font-size:13px'>{info['summary']}</div>", unsafe_allow_html=True)
-    st.markdown("---")
-
-    # Grafiksel metrikler
-    metrics_for_chart = [
-        "Fiyat", "Tahmin", "MCap/CATS", "Capex/Amort", "EBIT Margin", "FCF Margin",
-        "Gross Margin", "CATS", "Satış Çeyrek", "EBIT Çeyrek", "Net Kar Çeyrek"
-    ]
-    df = metrics_df[metrics_df['ticker'] == ticker]
-    metric_data = {m: df[df['metric'] == m].sort_values('period') for m in metrics_for_chart}
-
-    # Fiyat & Tahmin birlikte çizgi grafiği
-    fiyat = metric_data["Fiyat"].dropna(subset=['period', 'value'])
-    fiyat = fiyat[(fiyat['value'].notnull()) & (fiyat['period'].notnull())]
-    fiyat = fiyat[fiyat['value'] != 'None']
-    fiyat = fiyat[fiyat['period'] != 'None']
-
-    tahmin = metric_data["Tahmin"].dropna(subset=['period', 'value'])
-    tahmin = tahmin[(tahmin['value'].notnull()) & (tahmin['period'].notnull())]
-    tahmin = tahmin[tahmin['value'] != 'None']
-    tahmin = tahmin[tahmin['period'] != 'None']
-
-    if not fiyat.empty or not tahmin.empty:
-        st.markdown("#### Fiyat & Tahmin")
-        fig, ax = plt.subplots(figsize=(8, 4))
-
-        # --- BURADA DÖNÜŞÜMLERİ EKLE ---
+def plot_metric(ticker, metric, df):
+    d = df[df['metric']==metric].dropna(subset=['period','value'])
+    d = d[d['value'].apply(lambda x: str(x).lower() != "none")]
+    if d.empty: return html.Div()
+    d = d.sort_values("period")
+    # Fiyat & Tahmin
+    if metric == "Fiyat":
+        fiyat = d.copy()
+        tahmin = df[df['metric']=="Tahmin"].dropna(subset=['period','value'])
+        tahmin = tahmin[tahmin['value'].apply(lambda x: str(x).lower() != "none")].sort_values("period")
+        if fiyat.empty and tahmin.empty: return html.Div()
+        fig = go.Figure()
         if not fiyat.empty:
-            fiyat = fiyat.copy()
-            fiyat['value'] = fiyat['value'].astype(float)
-            fiyat = fiyat.sort_values('period')   # period sırası önemli
-            ax.plot(fiyat['period'], fiyat['value'], marker='o', label="Fiyat", color='royalblue')
-
+            fig.add_trace(go.Scatter(
+                x=fiyat["period"], y=fiyat["value"].astype(float),
+                mode='lines+markers', name="Fiyat", line=dict(color='royalblue')
+            ))
         if not tahmin.empty:
-            tahmin = tahmin.copy()
-            tahmin['value'] = tahmin['value'].astype(float)
-            tahmin = tahmin.sort_values('period')
-            ax.plot(tahmin['period'], tahmin['value'], marker='o', label="Tahmin", color='chocolate')
-
-        ax.set_ylabel("Değer")
-        ax.legend()
-        plt.xticks(rotation=30)
-        plt.tight_layout()
-        st.pyplot(fig)
-
+            fig.add_trace(go.Scatter(
+                x=tahmin["period"], y=tahmin["value"].astype(float),
+                mode='lines+markers', name="Tahmin", line=dict(color='chocolate')
+            ))
+        fig.update_layout(title="Fiyat & Tahmin", margin=dict(l=20, r=20, t=30, b=20), height=270)
+        return dcc.Graph(figure=fig, config={"displayModeBar": False})
     # Diğer metrikler
-    for m in metrics_for_chart:
-        if m in ["Fiyat", "Tahmin"]: continue
-        d = metric_data[m].dropna(subset=['period', 'value'])
-        d = d[(d['value'].notnull()) & (d['period'].notnull())]
-        d = d[d['value'] != 'None']
-        d = d[d['period'] != 'None']
-        if not d.empty:
-            d = d.copy()
-            d['value'] = d['value'].astype(float)
-            d = d.sort_values('period')
-            st.markdown(f"#### {m}")
-            fig, ax = plt.subplots()
-            ax.plot(d['period'], d['value'], marker='o')
-            ax.set_ylabel("Değer")
-            plt.xticks(rotation=30)
-            plt.tight_layout()
-            st.pyplot(fig)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=d["period"], y=d["value"].astype(float),
+        mode='lines+markers', name=metric
+    ))
+    fig.update_layout(title=metric, margin=dict(l=20, r=20, t=30, b=20), height=220)
+    return dcc.Graph(figure=fig, config={"displayModeBar": False})
 
-    st.markdown("---")
-    # Alt: Ham metrik tablo
-    st.markdown("#### Tüm Ham Veriler")
-    st.dataframe(df.pivot(index="period", columns="metric", values="value").sort_index(), use_container_width=True)
-
-# ────────── FAVORİLER SAYFASI ──────────
-def favorites_page():
-    searchbar()
-    favs = list(st.session_state['favorites'])
-    st.markdown("## ⭐ Favori Şirketler")
-    if not favs:
-        st.info("Hiç favori şirket eklemedin.")
+# Favori ekle/çıkar
+@app.callback(
+    Output("fav-store", "data"),
+    Input("star-fav", "n_clicks"),
+    State("company-select", "value"),
+    State("fav-store", "data"),
+    prevent_initial_call=True
+)
+def toggle_fav(n, ticker, favs):
+    if not ticker: raise PreventUpdate
+    favs = favs or []
+    if ticker in favs:
+        favs.remove(ticker)
     else:
-        for t in favs:
-            st.markdown(f"- [{t}](?selected_ticker={t})", unsafe_allow_html=True)
+        favs.append(ticker)
+    return favs
 
-# ────────── RADAR SAYFASI ──────────
-def radar_page():
-    searchbar()
-    st.markdown("## 🕵️ Radar Listesi")
-    df = metrics_df.copy()
-    # 1) Sadece istenen metrikler
-    wanted = ["Fiyat", "Tahmin", "MCap/CATS", "EBIT Margin", "FCF Margin", "CATS"]
-    def get_latest(ticker, metric):
-        d = df[(df['ticker'] == ticker) & (df['metric'] == metric)].sort_values('period')
-        vals = d['value'].dropna().values
-        if len(vals) == 0:
-            return None, None
-        cur = tofloat(vals[-1])
-        prev = tofloat(vals[-2]) if len(vals) > 1 else None
-        return cur, prev
-    radar_list = []
-    for t in all_tickers:
-        # Kriterleri uygula
-        fiyat_cur, fiyat_prev = get_latest(t, "Fiyat")
-        tahmin_cur, tahmin_prev = get_latest(t, "Tahmin")
-        mcap_cats_cur, mcap_cats_prev = get_latest(t, "MCap/CATS")
-        ebit_margin_cur, ebit_margin_prev = get_latest(t, "EBIT Margin")
-        fcf_margin_cur, fcf_margin_prev = get_latest(t, "FCF Margin")
-        cats_cur, cats_prev = get_latest(t, "CATS")
-        capex_amort_cur, capex_amort_prev = get_latest(t, "Capex/Amort")  # <-- YENİ EKLEME
-        # 1. Tahmin son > fiyat son-1
-        if tahmin_cur is None or fiyat_prev is None or tahmin_cur <= fiyat_prev: continue
-        # 2. Tahmin son > tahmin son-1
-        if tahmin_prev is None or tahmin_cur <= tahmin_prev: continue
-        # 3. MCap/CATS son > 0, ve eğer bir önceki de pozitifse son < son-1
-        if mcap_cats_cur is None or mcap_cats_cur <= 0: continue
-        if mcap_cats_prev is not None and mcap_cats_prev > 0 and not (mcap_cats_cur < mcap_cats_prev): continue
-        # 4. EBIT Margin son > son-1
-        if ebit_margin_cur is None or ebit_margin_prev is None or ebit_margin_cur <= ebit_margin_prev: continue
-        # 5. FCF Margin son > son-1
-        if fcf_margin_cur is None or fcf_margin_prev is None or fcf_margin_cur <= fcf_margin_prev: continue
-        # 6. CATS son > son-1
-        if cats_cur is None or cats_prev is None or cats_cur <= cats_prev: continue
-        # 7. Capex/Amort son < Capex/Amort son-1  ← EKLEDİĞİN KRİTER
-        if capex_amort_cur is None or capex_amort_prev is None or capex_amort_cur >= capex_amort_prev: continue
-        radar_list.append(t)
-    if not radar_list:
-        st.info("Radar kriterlerini sağlayan şirket yok.")
-    else:
-        for t in radar_list:
-            st.markdown(f"- [{t}](?selected_ticker={t})", unsafe_allow_html=True)
+# Favoriler sayfası
+def favorites_layout(favs):
+    return html.Div([
+        html.H4("⭐ Favoriler"),
+        html.Hr(),
+        html.Ul([
+            html.Li(dcc.Link(t, href=f"/?ticker={t}", refresh=True), style={"font-size":"1.2rem"}) for t in favs
+        ]) if favs else html.Div("Favorilere eklediğiniz şirket yok.")
+    ])
 
-# --- Routing ---
-if st.session_state['nav'] == "company":
-    company_page(st.session_state['selected_ticker'])
-elif st.session_state['nav'] == "favorites":
-    favorites_page()
-    st.session_state['nav'] = "company"
-elif st.session_state['nav'] == "radar":
-    radar_page()
-    st.session_state['nav'] = "company"
-else:
-    company_page(st.session_state['selected_ticker'])
+# Radar algoritması: radar=1 olanlar
+def radar_list():
+    # Son gelen veriyle radar=1 olanları döndür
+    df = company_info
+    radar_ones = df[df['radar'] == 1]['ticker'].tolist()
+    return radar_ones
+
+# Radar güncelleme butonu ve sayfa
+@app.callback(
+    Output("radar-store", "data"),
+    Input("go-radar", "n_clicks"),
+    prevent_initial_call=True
+)
+def update_radar(n):
+    return radar_list()
+
+def radar_layout(radars):
+    return html.Div([
+        html.H4("🕵️ Radar Listesi"),
+        dbc.Button("Güncelle", id="update-radar-btn", color="info", outline=True, size="sm", style={"margin-bottom":"8px"}),
+        html.Hr(),
+        html.Ul([
+            html.Li(dcc.Link(t, href=f"/?ticker={t}", refresh=True), style={"font-size":"1.2rem"}) for t in radars
+        ]) if radars else html.Div("Radar'da şirket yok.")
+    ])
+
+@app.callback(
+    Output("radar-store", "data"),
+    Input("update-radar-btn", "n_clicks"),
+    prevent_initial_call=True
+)
+def manual_update_radar(n):
+    return radar_list()
+
+if __name__ == "__main__":
+    app.run_server(debug=True)

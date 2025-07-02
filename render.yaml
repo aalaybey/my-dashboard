@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: dash-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: DB_HOST
+        value: senin-db-host
+      - key: DB_NAME
+        value: senin-db-name
+      - key: DB_USER
+        value: senin-db-user
+      - key: DB_PASS
+        value: senin-db-pass
+      - key: DB_PORT
+        value: senin-db-port
+      - key: DASH_USER
+        value: kendi-kullanici
+      - key: DASH_PASS
+        value: kendi-sifre

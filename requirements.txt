@@ -1,5 +1,6 @@
-streamlit
-streamlit-authenticator>=0.4
-psycopg2-binary
+dash
+dash-bootstrap-components
+dash-auth
 pandas
-matplotlib
+psycopg2-binary
+plotly
