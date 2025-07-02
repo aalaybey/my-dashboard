@@ -2,5 +2,6 @@ dash
 dash-bootstrap-components
 dash-auth
 pandas
-psycopg2-binary
+SQLAlchemy>=2.0
+psycopg2-binary>=2.9
 plotly
