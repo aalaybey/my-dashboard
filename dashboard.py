@@ -98,42 +98,29 @@ def load_company_info(ticker: str) -> pd.Series | None:
 @functools.lru_cache(maxsize=256)
 def load_metrics(ticker: str) -> pd.DataFrame:
     """
-    excel_metrics tablosundan seçili şirketin verilerini GENİŞ → UZUN formata çevir.
-    Dönüş: period, metric, value sütunlu DataFrame (metric_chart bunu bekler).
+    excel_metrics tablosundan seçili şirketin grafiklerde kullanılacak
+    metriklerini getirir. Tablo zaten uzun formda olduğu için ekstra
+    pivot/melt gerekmiyor.
     """
     q = sa_text("""
         SELECT
-            quarter_date      AS period,        -- tablo kolonunun adını uyarlayın
-            "Fiyat",
-            "Tahmin",
-            "MCap/CATS",
-            "Capex/Amort",
-            "EBIT Margin",
-            "FCF Margin",
-            "Gross Margin",
-            "CATS",
-            "Satış Çeyrek",
-            "EBIT Çeyrek",
-            "Net Kar Çeyrek"
+            period,                          -- ör. '2025 Q1'
+            metric,                          -- ör. 'Fiyat'
+            value::numeric AS value          -- text → numeric
         FROM excel_metrics
         WHERE ticker = :t
-        ORDER BY quarter_date
+          AND metric IN (
+              'Fiyat','Tahmin','MCap/CATS','Capex/Amort','EBIT Margin',
+              'FCF Margin','Gross Margin','CATS',
+              'Satış Çeyrek','EBIT Çeyrek','Net Kar Çeyrek'
+          )
+        ORDER BY period
     """)
+
     with get_engine_cached().connect() as conn:
-        wide = pd.read_sql(q, conn, params={"t": ticker})
+        df = pd.read_sql(q, conn, params={"t": ticker})
 
-    if wide.empty:
-        return pd.DataFrame(columns=["period", "metric", "value"])
-
-    # Geniş → uzun (period sabit kalır, diğer metrikler tek sütuna iner)
-    long_df = wide.melt(
-        id_vars="period",
-        var_name="metric",
-        value_name="value",
-    ).dropna(subset=["value"])
-
-    return long_df
-
+    return df
 
 
 
