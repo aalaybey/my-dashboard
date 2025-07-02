@@ -50,12 +50,17 @@ external_styles = [
     "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
 ]
 
+import secrets   # <–– en üste import ekle
+
 app = dash.Dash(
     __name__,
     external_stylesheets=external_styles,
-    suppress_callback_exceptions=True,  # dinamik bileşen ID’leri için
+    suppress_callback_exceptions=True,
 )
-app.server.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
+
+SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_hex(32)
+app.server.config["SECRET_KEY"] = SECRET_KEY          # dash_auth bunun varlığını arıyor
+
 server = app.server
 _ = dash_auth.BasicAuth(app, VALID_USERS)  # noqa: F841 – kullanılmıyor ama gerekli
 
@@ -74,11 +79,12 @@ def get_engine() -> Engine:
 
 
 def load_company_info() -> pd.DataFrame:
-    return pd.read_sql("SELECT * FROM company_info", get_engine())
-
+    with get_engine().connect() as conn:
+        return pd.read_sql("SELECT * FROM company_info", conn)
 
 def load_metrics() -> pd.DataFrame:
-    return pd.read_sql("SELECT * FROM excel_metrics", get_engine())
+    with get_engine().connect() as conn:
+        return pd.read_sql("SELECT * FROM excel_metrics", conn)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
