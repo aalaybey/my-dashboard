@@ -310,43 +310,33 @@ def company_layout(ticker: str, favs: list[str]):
 # GRAFİK ÜRETİMİ
 # ──────────────────────────────────────────────────────────────────────────────
 
-def metric_chart(df: pd.DataFrame, ticker: str, metric: str):
-    data = df[(df.ticker == ticker) & (df.metric == metric)].dropna(subset=["period", "value"])
+def metric_chart(df: pd.DataFrame, ticker: str, metric: str) -> html.Div:
+    """
+    Seçilen tek metrik için çizgi grafiği döndürür.
+    load_metrics(ticker) zaten tek şirkete ait veriyi döndürdüğü için
+    df’de 'ticker' kolonu yok; sadece 'metric', 'period', 'value' var.
+    """
+    # Yalnızca istenen metrik + boş olmayan satırlar
+    data = df[df.metric == metric].dropna(subset=["period", "value"])
+
     if data.empty:
-        return None
+        return html.Div(f"{metric} verisi bulunamadı.", className="chart-empty")
 
-    # "none" metinlerini eleyip sayıya çevir
-    data = data[data.value.astype(str).str.lower() != "none"].copy()
-    data["value"] = data.value.astype(float)
-    data = data.sort_values("period")
+    fig = px.line(
+        data,
+        x="period",
+        y="value",
+        markers=True,
+        title=metric,
+        labels={"period": "Dönem", "value": metric},
+    )
+    fig.update_layout(
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=260,
+    )
 
-    # "Fiyat" özel durumu: Tahmin'le birlikte çiz ---------------------------
-    if metric == "Fiyat":
-        tahmin = df[(df.ticker == ticker) & (df.metric == "Tahmin")].dropna(subset=["period", "value"])
-        tahmin = tahmin[tahmin.value.astype(str).str.lower() != "none"].copy()
-        tahmin["value"] = tahmin.value.astype(float)
-        tahmin = tahmin.sort_values("period")
+    return dcc.Graph(figure=fig, className="chart-graph")
 
-        if data.empty and tahmin.empty:
-            return None
-
-        fig = go.Figure()
-        if not data.empty:
-            fig.add_trace(
-                go.Scatter(x=data.period, y=data.value, mode="lines+markers", name="Fiyat", line=dict(color="royalblue"))
-            )
-        if not tahmin.empty:
-            fig.add_trace(
-                go.Scatter(x=tahmin.period, y=tahmin.value, mode="lines+markers", name="Tahmin", line=dict(color="chocolate"))
-            )
-        fig.update_layout(title="Fiyat & Tahmin", margin=dict(l=10, r=10, t=30, b=20), height=260)
-        return dcc.Graph(figure=fig, config={"displayModeBar": False})
-
-    # Diğer metrikler --------------------------------------------------------
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=data.period, y=data.value, mode="lines+markers", name=metric))
-    fig.update_layout(title=metric, margin=dict(l=10, r=10, t=30, b=20), height=230)
-    return dcc.Graph(figure=fig, config={"displayModeBar": False})
 
 
 # ──────────────────────────────────────────────────────────────────────────────
