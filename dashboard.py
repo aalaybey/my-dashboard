@@ -234,14 +234,7 @@ def radar_list():
     radar_ones = info_df[info_df['radar'] == 1]['ticker'].tolist()
     return radar_ones
 
-# Radar güncelleme butonu ve sayfa
-@app.callback(
-    Output("radar-store", "data"),
-    Input("go-radar", "n_clicks"),
-    prevent_initial_call=True
-)
-def update_radar(n):
-    return radar_list()
+
 
 def radar_layout(radars):
     return html.Div([
@@ -255,11 +248,12 @@ def radar_layout(radars):
 
 @app.callback(
     Output("radar-store", "data"),
-    Input("update-radar-btn", "n_clicks"),
+    [Input("go-radar", "n_clicks"), Input("update-radar-btn", "n_clicks")],
     prevent_initial_call=True
 )
-def manual_update_radar(n):
+def update_radar(go_click, update_click):
     return radar_list()
+
 
 # --- EN ALTA BU BLOĞU EKLE ---
 port = int(os.environ.get("PORT", 10000))
