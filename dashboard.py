@@ -1,215 +1,321 @@
+# dash_company_dashboard.py
+"""
+Dash-tabanlı şirket gösterge paneli
+===================================
+
+• Supabase'deki **company_info** ve **excel_metrics** tablolarını kullanır.
+• Basit HTTP temel kimlik doğrulaması (env değişkenleriyle).
+• Şirket arama çubuğu, favori yıldızlama, radar listesi.
+• Her şirket için tüm grafikler dikey sıralı – kaydırılabilir.
+
+Gerekli pip paketleri
+----------------------
+```bash
+pip install dash dash-bootstrap-components dash-auth psycopg2-binary pandas plotly
+```
+
+Ortam değişkenleri
+-------------------
+```
+DASH_USER, DASH_PASS           # giriş bilgileri
+DB_HOST, DB_NAME, DB_USER, DB_PASS, DB_PORT  # Supabase Postgres
+PORT                           # Render vb. için (varsayılan 10000)
+```
+"""
+
+import os
+from urllib.parse import urlparse, parse_qs
+
 import dash
 import dash_bootstrap_components as dbc
+import dash_auth
 from dash import html, dcc, Input, Output, State, callback_context
+from dash.exceptions import PreventUpdate
 import pandas as pd
 import plotly.graph_objects as go
 import psycopg2
-import os
-from dash.exceptions import PreventUpdate
-import dash_auth
 
-# ---------------- SECRETS / LOGIN ----------------
-VALID_USERNAME_PASSWORD_PAIRS = {
-    os.environ.get("DASH_USER", "user"): os.environ.get("DASH_PASS", "1234")
+# ──────────────────────────────────────────────────────────────────────────────
+# GİRİŞ / TEMEL KİMLİK DOĞRULAMA
+# ──────────────────────────────────────────────────────────────────────────────
+VALID_USERS = {
+    os.getenv("DASH_USER", "user"): os.getenv("DASH_PASS", "1234")
 }
-# dash_auth ile basic login
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-auth = dash_auth.BasicAuth(app, VALID_USERNAME_PASSWORD_PAIRS)
+external_styles = [
+    dbc.themes.BOOTSTRAP,
+    "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
+]
+app = dash.Dash(__name__, external_stylesheets=external_styles)
+server = app.server
+_ = dash_auth.BasicAuth(app, VALID_USERS)  # noqa: F841 – kullanılmıyor ama gerekli
 
-server = app.server  # deploy için
+# ──────────────────────────────────────────────────────────────────────────────
+# VERİ TABANI FONKSİYONLARI
+# ──────────────────────────────────────────────────────────────────────────────
 
-# ----------------- DATABASE CONNECT ----------------
-def get_db_conn():
+def get_conn():
     return psycopg2.connect(
-        host=os.environ.get("DB_HOST"),
-        database=os.environ.get("DB_NAME"),
-        user=os.environ.get("DB_USER"),
-        password=os.environ.get("DB_PASS"),
-        port=os.environ.get("DB_PORT"),
+        host=os.getenv("DB_HOST"),
+        database=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        port=os.getenv("DB_PORT", 5432),
     )
 
-def load_company_info():
-    conn = get_db_conn()
-    df = pd.read_sql("SELECT * FROM company_info", conn)
-    conn.close()
-    return df
 
-def load_metrics():
-    conn = get_db_conn()
-    df = pd.read_sql("SELECT * FROM excel_metrics", conn)
-    conn.close()
-    return df
+def load_company_info() -> pd.DataFrame:
+    with get_conn() as con:
+        return pd.read_sql("SELECT * FROM company_info", con)
 
-METRICS_FOR_CHART = [
-    "Fiyat", "Tahmin", "MCap/CATS", "Capex/Amort", "EBIT Margin",
-    "FCF Margin", "Gross Margin", "CATS", "Satış Çeyrek", "EBIT Çeyrek", "Net Kar Çeyrek"
+
+def load_metrics() -> pd.DataFrame:
+    with get_conn() as con:
+        return pd.read_sql("SELECT * FROM excel_metrics", con)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SABİTLER
+# ──────────────────────────────────────────────────────────────────────────────
+CHART_METRICS = [
+    "Fiyat",
+    "Tahmin",
+    "MCap/CATS",
+    "Capex/Amort",
+    "EBIT Margin",
+    "FCF Margin",
+    "Gross Margin",
+    "CATS",
+    "Satış Çeyrek",
+    "EBIT Çeyrek",
+    "Net Kar Çeyrek",
 ]
 
-# --------------- Layout -----------------
-def company_dropdown(selected=None):
-    info_df = load_company_info()
-    ALL_TICKERS = info_df['ticker'].sort_values().tolist()
-    return dcc.Dropdown(
-        options=[{"label": t, "value": t} for t in ALL_TICKERS],
-        value=selected or (ALL_TICKERS[0] if ALL_TICKERS else None),
-        id="company-select",
-        style={"width": "100%", "margin-bottom": "10px"}
+# ──────────────────────────────────────────────────────────────────────────────
+# KULLANICI ARAYÜZÜ BİLEŞENLERİ
+# ──────────────────────────────────────────────────────────────────────────────
+
+def search_input():
+    return dbc.Input(
+        id="search-input",
+        placeholder="Ticker ara…",
+        type="text",
+        debounce=True,
+        style={"maxWidth": "220px"},
     )
 
-def star_icon(fav):
-    return html.I(className="bi bi-star-fill" if fav else "bi bi-star",
-                  style={"font-size": "2rem", "color": "#f7c948", "cursor": "pointer"},
-                  id="star-fav", n_clicks=0)
 
-def get_summary_html(summary):
-    # Summary'i satır kayması ile göster
-    if not summary: return ""
-    return html.Div(summary, style={"font-size": "1rem", "color": "#444", "whiteSpace": "pre-line"})
+def star_icon(filled: bool):
+    return html.I(
+        className="bi bi-star-fill" if filled else "bi bi-star",
+        style={"fontSize": "1.8rem", "color": "#f7c948", "cursor": "pointer"},
+        id="fav-toggle",
+        n_clicks=0,
+    )
 
-# --------- Favori/Radar session için dash dcc.Store kullanılacak ----------
-app.layout = dbc.Container([
-    dcc.Store(id="fav-store", storage_type="session"),  # favoriler
-    dcc.Store(id="radar-store", storage_type="session"), # radar listesi
-    dcc.Location(id="url"),
-    dbc.Row([
-        dbc.Col([
-            html.Div([
-                html.H3("Şirket Dashboard", className="text-primary", style={"margin":"15px 0 5px"}),
-                dbc.Input(id="search-bar", placeholder="Şirket ticker ara...", type="text", debounce=True),
-            ]),
-        ], width=8),
-        dbc.Col([
-            dbc.Button("Radar", id="go-radar", color="secondary", outline=True, style={"margin-right":"6px"}),
-            dbc.Button("Favoriler", id="go-favs", color="secondary", outline=True)
-        ], width=4, style={"text-align":"right"})
-    ], align="center", style={"margin-bottom":"12px"}),
-    html.Hr(),
-    html.Div(id="main-content")
-], fluid=True, style={"maxWidth": "700px"})
 
-# ----------- CALLBACKS -----------
-
-# Search + Dropdown filtreleme
-@app.callback(
-    Output("company-select", "options"),
-    Output("company-select", "value"),
-    Input("search-bar", "value"),
-    State("company-select", "value"),
+# ──────────────────────────────────────────────────────────────────────────────
+# UYGULAMA İSKELETİ
+# ──────────────────────────────────────────────────────────────────────────────
+app.layout = dbc.Container(
+    [
+        dcc.Location(id="url", refresh=False),
+        dcc.Store(id="store-favs", storage_type="local"),  # kalıcı favoriler
+        dcc.Store(id="store-radar", storage_type="session"),
+        # Üst şerit -------------------------------------------------------------
+        dbc.Row(
+            [
+                dbc.Col(html.H3("Şirket Dashboard", className="text-primary"), sm=6),
+                dbc.Col(
+                    [
+                        search_input(),
+                        dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2"),
+                        dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1"),
+                    ],
+                    sm=6,
+                    className="text-end",
+                ),
+            ],
+            align="center",
+            className="mt-2 mb-2",
+        ),
+        html.Hr(),
+        html.Div(id="page-content"),
+    ],
+    fluid=True,
+    style={"maxWidth": "820px"},
 )
-def filter_dropdown(search, current):
-    info_df = load_company_info()
-    ALL_TICKERS = info_df['ticker'].sort_values().tolist()
-    filtered = [t for t in ALL_TICKERS if (not search or search.lower() in t.lower())]
-    sel = filtered[0] if filtered and (current not in filtered) else current
-    return [{"label": t, "value": t} for t in filtered], sel or (filtered[0] if filtered else None)
 
-# Ana sayfa yönlendirme
+# ──────────────────────────────────────────────────────────────────────────────
+# YARDIMCI FONKSİYONLAR
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_all_tickers() -> list[str]:
+    return load_company_info()["ticker"].sort_values().tolist()
+
+
+def parse_ticker_from_href(href: str | None) -> str | None:
+    if not href:
+        return None
+    qs = parse_qs(urlparse(href).query)
+    return qs.get("t", [None])[0]
+
+
+def make_company_link(ticker: str):
+    return dcc.Link(ticker, href=f"/?t={ticker}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CALLBACK: SEARCH BAR → YÖNLENDİRME
+# ──────────────────────────────────────────────────────────────────────────────
+@app.callback(Output("url", "href"), Input("search-input", "value"), prevent_initial_call=True)
+def on_search(val):
+    if not val:
+        raise PreventUpdate
+    # eşleşen ilk ticker
+    val_low = val.lower()
+    matches = [t for t in get_all_tickers() if val_low in t.lower()]
+    if not matches:
+        raise PreventUpdate
+    return f"/?t={matches[0]}"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CALLBACK: ANA SAYFA YÖNLENDİRME / İÇERİK
+# ──────────────────────────────────────────────────────────────────────────────
 @app.callback(
-    Output("main-content", "children"),
-    Input("url", "pathname"),
-    Input("go-favs", "n_clicks"),
-    Input("go-radar", "n_clicks"),
-    Input("company-select", "value"),
-    State("fav-store", "data"),
-    State("radar-store", "data"),
-    prevent_initial_call=True
+    Output("page-content", "children"),
+    [
+        Input("url", "href"),  # adres değişti
+        Input("btn-favs", "n_clicks"),
+        Input("btn-radar", "n_clicks"),
+    ],
+    [
+        State("store-favs", "data"),
+        State("store-radar", "data"),
+    ],
 )
-def render_page(path, favs_click, radar_click, ticker, favs, radar):
+def render_page(href, fav_click, radar_click, favs, radar_data):
     ctx = callback_context
-    if not ctx.triggered: raise PreventUpdate
+    trig_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "url"
 
-    trig = ctx.triggered[0]["prop_id"].split(".")[0]
-    # Ana company sayfası
-    if trig in ["company-select", "url"] and ticker:
-        return company_page_layout(ticker, favs or [])
-    elif trig == "go-favs":
-        return favorites_layout(favs or [])
-    elif trig == "go-radar":
-        return radar_layout(radar or [])
-    else:
-        return company_page_layout(ticker, favs or [])
+    favs = favs or []
+    radar_data = radar_data or []
 
-# Şirket sayfası ve yıldız favori callback
-def company_page_layout(ticker, favs):
+    if trig_id == "btn-favs":
+        return favorites_layout(favs)
+    if trig_id == "btn-radar":
+        return radar_layout(radar_data)
+
+    # varsayılan: şirket sayfası
+    ticker = parse_ticker_from_href(href) or (get_all_tickers()[0] if get_all_tickers() else None)
+    return company_layout(ticker, favs) if ticker else html.Div("Şirket bulunamadı.")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ŞİRKET SAYFASI
+# ──────────────────────────────────────────────────────────────────────────────
+
+def company_layout(ticker: str, favs: list[str]):
     info_df = load_company_info()
     metrics_df = load_metrics()
-    info = info_df[info_df['ticker'] == ticker].iloc[0]
-    df = metrics_df[metrics_df['ticker'] == ticker]
-    fav = ticker in favs
 
-    return html.Div([
-        html.Div([
-            company_dropdown(selected=ticker),
-            html.Span([
-                star_icon(fav),
-                html.Span(" Favorilere ekle/çıkar", style={"font-size":"1.2rem"})
-            ], style={"float":"right", "margin-top":"-55px"})
-        ]),
-        dbc.Row([
-            dbc.Col([
-                html.Table([
-                    html.Tr([html.Td(html.B("Sector")), html.Td(info['sector'])]),
-                    html.Tr([html.Td(html.B("Industry")), html.Td(info['industry'])]),
-                    html.Tr([html.Td(html.B("Employees")), html.Td(f"{info['employees']:,}")]),
-                    html.Tr([html.Td(html.B("Earnings Date")), html.Td(str(info['earnings_date']))]),
-                    html.Tr([html.Td(html.B("Market Cap")), html.Td(str(info['market_cap']))]),
-                    html.Tr([html.Td(html.B("Radar")), html.Td(str(info['radar']))]),
-                ], style={"font-size":"1.07rem"}),
-            ], width=5),
-            dbc.Col([
-                html.B("Summary"),
-                get_summary_html(info.get("summary", "")),
-            ], width=7)
-        ], style={"margin-bottom":"15px"}),
-        html.Hr(),
-        html.Div([
-            *[plot_metric(ticker, m, df) for m in METRICS_FOR_CHART]
-        ], style={"maxHeight":"70vh", "overflowY":"auto"})
-    ])
+    info_row = info_df[info_df.ticker == ticker]
+    if info_row.empty:
+        return html.Div("Geçersiz ticker.")
+    info = info_row.iloc[0]
+    is_fav = ticker in favs
 
-def plot_metric(ticker, metric, df):
-    d = df[df['metric']==metric].dropna(subset=['period','value'])
-    d = d[d['value'].apply(lambda x: str(x).lower() != "none")]
-    if d.empty: return html.Div()
-    d = d.sort_values("period")
-    # Fiyat & Tahmin
+    # Üst: Ticker ve yıldız ----------------------------------------------------
+    header = dbc.Row(
+        [
+            dbc.Col(html.H4(ticker, className="mb-0"), width="auto"),
+            dbc.Col(star_icon(is_fav), width="auto"),
+        ],
+        align="center",
+        className="gap-2",
+    )
+
+    # Bilgi tablosu -----------------------------------------------------------
+    table = html.Table(
+        [
+            html.Tr([html.Th("Sector"), html.Td(info["sector"])]),
+            html.Tr([html.Th("Industry"), html.Td(info["industry"])]),
+            html.Tr([html.Th("Employees"), html.Td(f"{info['employees']:,}")]),
+            html.Tr([html.Th("Earnings Date"), html.Td(str(info["earnings_date"]))]),
+            html.Tr([html.Th("Market Cap"), html.Td(str(info["market_cap"]))]),
+            html.Tr([html.Th("Radar"), html.Td(str(info["radar"]))]),
+        ],
+        className="table table-sm",
+    )
+
+    # Summary ---------------------------------------------------------------
+    summary = html.Div(
+        [html.H5("Summary"), html.Pre(info["summary"], style={"whiteSpace": "pre-wrap"})],
+        className="p-2 border rounded",
+    )
+
+    # Grafikler --------------------------------------------------------------
+    charts = [metric_chart(metrics_df, ticker, m) for m in CHART_METRICS]
+    charts = [c for c in charts if c]  # boşları at
+    charts_container = html.Div(
+        charts,
+        style={"maxHeight": "65vh", "overflowY": "auto"},
+    )
+
+    return html.Div([header, html.Hr(), table, summary, html.Hr(), charts_container])
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# GRAFİK ÜRETİMİ
+# ──────────────────────────────────────────────────────────────────────────────
+
+def metric_chart(df: pd.DataFrame, ticker: str, metric: str):
+    data = df[(df.ticker == ticker) & (df.metric == metric)].dropna(subset=["period", "value"])
+    if data.empty:
+        return None
+    data = data[data.value.astype(str).str.lower() != "none"].copy()
+    data["value"] = data.value.astype(float)
+    data = data.sort_values("period")
+
     if metric == "Fiyat":
-        fiyat = d.copy()
-        tahmin = df[df['metric']=="Tahmin"].dropna(subset=['period','value'])
-        tahmin = tahmin[tahmin['value'].apply(lambda x: str(x).lower() != "none")].sort_values("period")
-        if fiyat.empty and tahmin.empty: return html.Div()
+        # tahmin birlikte çizilecek
+        tahmin = df[(df.ticker == ticker) & (df.metric == "Tahmin")].dropna(subset=["period", "value"])
+        tahmin = tahmin[tahmin.value.astype(str).str.lower() != "none"].copy()
+        tahmin["value"] = tahmin.value.astype(float)
+        tahmin = tahmin.sort_values("period")
+
+        if data.empty and tahmin.empty:
+            return None
+
         fig = go.Figure()
-        if not fiyat.empty:
-            fig.add_trace(go.Scatter(
-                x=fiyat["period"], y=fiyat["value"].astype(float),
-                mode='lines+markers', name="Fiyat", line=dict(color='royalblue')
-            ))
+        if not data.empty:
+            fig.add_trace(go.Scatter(x=data.period, y=data.value, mode="lines+markers", name="Fiyat", line=dict(color="royalblue")))
         if not tahmin.empty:
-            fig.add_trace(go.Scatter(
-                x=tahmin["period"], y=tahmin["value"].astype(float),
-                mode='lines+markers', name="Tahmin", line=dict(color='chocolate')
-            ))
-        fig.update_layout(title="Fiyat & Tahmin", margin=dict(l=20, r=20, t=30, b=20), height=270)
+            fig.add_trace(go.Scatter(x=tahmin.period, y=tahmin.value, mode="lines+markers", name="Tahmin", line=dict(color="chocolate")))
+        fig.update_layout(title="Fiyat & Tahmin", margin=dict(l=10, r=10, t=30, b=20), height=260)
         return dcc.Graph(figure=fig, config={"displayModeBar": False})
-    # Diğer metrikler
+
+    # diğer tek çizgi metrikler
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=d["period"], y=d["value"].astype(float),
-        mode='lines+markers', name=metric
-    ))
-    fig.update_layout(title=metric, margin=dict(l=20, r=20, t=30, b=20), height=220)
+    fig.add_trace(go.Scatter(x=data.period, y=data.value, mode="lines+markers", name=metric))
+    fig.update_layout(title=metric, margin=dict(l=10, r=10, t=30, b=20), height=230)
     return dcc.Graph(figure=fig, config={"displayModeBar": False})
 
-# Favori ekle/çıkar
+
+# ──────────────────────────────────────────────────────────────────────────────
+# FAVORİ İŞLEMLERİ
+# ──────────────────────────────────────────────────────────────────────────────
 @app.callback(
-    Output("fav-store", "data"),
-    Input("star-fav", "n_clicks"),
-    State("company-select", "value"),
-    State("fav-store", "data"),
-    prevent_initial_call=True
+    Output("store-favs", "data"),
+    Input("fav-toggle", "n_clicks"),
+    State("url", "href"),
+    State("store-favs", "data"),
+    prevent_initial_call=True,
 )
-def toggle_fav(n, ticker, favs):
-    if not ticker: raise PreventUpdate
+def toggle_fav(_, href, favs):
+    ticker = parse_ticker_from_href(href)
+    if not ticker:
+        raise PreventUpdate
     favs = favs or []
     if ticker in favs:
         favs.remove(ticker)
@@ -217,45 +323,48 @@ def toggle_fav(n, ticker, favs):
         favs.append(ticker)
     return favs
 
-# Favoriler sayfası
-def favorites_layout(favs):
-    info_df = load_company_info()
-    return html.Div([
-        html.H4("⭐ Favoriler"),
-        html.Hr(),
-        html.Ul([
-            html.Li(dcc.Link(t, href=f"/?ticker={t}", refresh=True), style={"font-size":"1.2rem"}) for t in favs
-        ]) if favs else html.Div("Favorilere eklediğiniz şirket yok.")
-    ])
 
-# Radar algoritması: radar=1 olanlar
-def radar_list():
-    info_df = load_company_info()
-    radar_ones = info_df[info_df['radar'] == 1]['ticker'].tolist()
-    return radar_ones
+def favorites_layout(favs: list[str]):
+    return html.Div(
+        [
+            html.H4("⭐ Favoriler"),
+            html.Hr(),
+            html.Ul([html.Li(make_company_link(t), className="mb-2") for t in favs]) if favs else html.Div("Favorilere eklenmiş şirket yok."),
+        ]
+    )
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# RADAR LİSTESİ
+# ──────────────────────────────────────────────────────────────────────────────
 
-def radar_layout(radars):
-    return html.Div([
-        html.H4("🕵️ Radar Listesi"),
-        dbc.Button("Güncelle", id="update-radar-btn", color="info", outline=True, size="sm", style={"margin-bottom":"8px"}),
-        html.Hr(),
-        html.Ul([
-            html.Li(dcc.Link(t, href=f"/?ticker={t}", refresh=True), style={"font-size":"1.2rem"}) for t in radars
-        ]) if radars else html.Div("Radar'da şirket yok.")
-    ])
+def current_radar_list() -> list[str]:
+    return load_company_info()[lambda d: d.radar == 1].ticker.tolist()
+
+
+def radar_layout(radars: list[str]):
+    return html.Div(
+        [
+            html.H4("🕵️ Radar Listesi"),
+            dbc.Button("Listeyi Güncelle", id="btn-update-radar", color="info", outline=True, size="sm", className="mb-2"),
+            html.Hr(),
+            html.Ul([html.Li(make_company_link(t), className="mb-2") for t in radars]) if radars else html.Div("Radar'da şirket yok."),
+        ]
+    )
+
 
 @app.callback(
-    Output("radar-store", "data"),
-    [Input("go-radar", "n_clicks"), Input("update-radar-btn", "n_clicks")],
-    prevent_initial_call=True
+    Output("store-radar", "data"),
+    Input("btn-update-radar", "n_clicks"),
+    prevent_initial_call=True,
 )
-def update_radar(go_click, update_click):
-    return radar_list()
+def on_radar_update(_):
+    return current_radar_list()
 
 
-# --- EN ALTA BU BLOĞU EKLE ---
-port = int(os.environ.get("PORT", 10000))
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ──────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=port)
+    port = int(os.getenv("PORT", 10000))
+    app.run_server(debug=True, host="0.0.0.0", port=port)
