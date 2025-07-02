@@ -191,8 +191,16 @@ app.layout = dbc.Container(
 # YARDIMCI FONKSİYONLAR
 # ──────────────────────────────────────────────────────────────────────────────
 
+@functools.lru_cache(maxsize=1)
 def get_all_tickers() -> list[str]:
-    return load_company_info()["ticker"].sort_values().tolist()
+    """
+    company_info tablosundan tüm ticker’ları bir kez çek, alfabetik sırada döndür.
+    """
+    q = sa_text("SELECT ticker FROM company_info ORDER BY ticker")
+    with get_engine_cached().connect() as conn:
+        df = pd.read_sql(q, conn)
+    return df["ticker"].tolist()
+
 
 
 def parse_ticker_from_href(href: str | None) -> str | None:
@@ -375,7 +383,14 @@ def favorites_layout(favs: list[str]):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def current_radar_list() -> list[str]:
-    return load_company_info()[lambda d: d.radar == 1].ticker.tolist()
+    """
+    Radar = 1 olan şirketlerin ticker listesi.
+    """
+    q = sa_text("SELECT ticker FROM company_info WHERE radar = 1 ORDER BY ticker")
+    with get_engine_cached().connect() as conn:
+        df = pd.read_sql(q, conn)
+    return df["ticker"].tolist()
+
 
 
 def radar_layout(radars: list[str]):
