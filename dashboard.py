@@ -35,8 +35,9 @@ import pandas as pd
 import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
-from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine
+from sqlalchemy import create_engine, text as sa_text
+import os, functools, secrets, psutil
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # GİRİŞ / TEMEL KİMLİK DOĞRULAMA
@@ -76,15 +77,41 @@ def get_engine() -> Engine:
         f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', 5432)}/{os.getenv('DB_NAME')}",
         pool_pre_ping=True,
     )
+@functools.lru_cache(maxsize=1)
+def get_engine_cached():
+    return get_engine()
 
 
-def load_company_info() -> pd.DataFrame:
-    with get_engine().connect() as conn:
-        return pd.read_sql("SELECT * FROM company_info", conn)
+@functools.lru_cache(maxsize=256)
+def load_company_info(ticker: str) -> pd.Series | None:
+    """
+    company_info tablosundan tek satır döndür (belleği şişirme).
+    """
+    q = sa_text("SELECT * FROM company_info WHERE ticker = :t")
+    with get_engine_cached().connect() as conn:
+        df = pd.read_sql(q, conn, params={"t": ticker})
+    return df.iloc[0] if not df.empty else None
 
-def load_metrics() -> pd.DataFrame:
-    with get_engine().connect() as conn:
-        return pd.read_sql("SELECT * FROM excel_metrics", conn)
+
+@functools.lru_cache(maxsize=256)
+def load_metrics(ticker: str) -> pd.DataFrame:
+    """
+    excel_metrics tablosundan ilgili şirketin grafikte kullanılacak metrikleri getir.
+    """
+    q = sa_text("""
+        SELECT period, metric, value
+        FROM excel_metrics
+        WHERE ticker = :t
+          AND metric IN (
+              'Fiyat','Tahmin','MCap/CATS','Capex/Amort','EBIT Margin',
+              'FCF Margin','Gross Margin','CATS',
+              'Satış Çeyrek','EBIT Çeyrek','Net Kar Çeyrek'
+          )
+        ORDER BY period
+    """)
+    with get_engine_cached().connect() as conn:
+        return pd.read_sql(q, conn, params={"t": ticker})
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -225,13 +252,12 @@ def render_page(href, fav_click, radar_click, favs, radar_data):
 # ──────────────────────────────────────────────────────────────────────────────
 
 def company_layout(ticker: str, favs: list[str]):
-    info_df = load_company_info()
-    metrics_df = load_metrics()
-
-    info_row = info_df[info_df.ticker == ticker]
-    if info_row.empty:
+    info = load_company_info(ticker)
+    if info is None:
         return html.Div("Geçersiz ticker.")
-    info = info_row.iloc[0]
+
+    metrics_df = load_metrics(ticker)
+
     is_fav = ticker in favs
 
     # Üst başlık --------------------------------------------------------------
