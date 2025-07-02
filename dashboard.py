@@ -40,10 +40,6 @@ def load_metrics():
     conn.close()
     return df
 
-# ------------ Uygulama içi cache ve state için global değişkenler ----------
-company_info = load_company_info()
-metrics = load_metrics()
-ALL_TICKERS = company_info['ticker'].sort_values().tolist()
 METRICS_FOR_CHART = [
     "Fiyat", "Tahmin", "MCap/CATS", "Capex/Amort", "EBIT Margin",
     "FCF Margin", "Gross Margin", "CATS", "Satış Çeyrek", "EBIT Çeyrek", "Net Kar Çeyrek"
@@ -51,6 +47,8 @@ METRICS_FOR_CHART = [
 
 # --------------- Layout -----------------
 def company_dropdown(selected=None):
+    info_df = load_company_info()
+    ALL_TICKERS = info_df['ticker'].sort_values().tolist()
     return dcc.Dropdown(
         options=[{"label": t, "value": t} for t in ALL_TICKERS],
         value=selected or (ALL_TICKERS[0] if ALL_TICKERS else None),
@@ -99,6 +97,8 @@ app.layout = dbc.Container([
     State("company-select", "value"),
 )
 def filter_dropdown(search, current):
+    info_df = load_company_info()
+    ALL_TICKERS = info_df['ticker'].sort_values().tolist()
     filtered = [t for t in ALL_TICKERS if (not search or search.lower() in t.lower())]
     sel = filtered[0] if filtered and (current not in filtered) else current
     return [{"label": t, "value": t} for t in filtered], sel or (filtered[0] if filtered else None)
@@ -131,8 +131,10 @@ def render_page(path, favs_click, radar_click, ticker, favs, radar):
 
 # Şirket sayfası ve yıldız favori callback
 def company_page_layout(ticker, favs):
-    info = company_info[company_info['ticker'] == ticker].iloc[0]
-    df = metrics[metrics['ticker'] == ticker]
+    info_df = load_company_info()
+    metrics_df = load_metrics()
+    info = info_df[info_df['ticker'] == ticker].iloc[0]
+    df = metrics_df[metrics_df['ticker'] == ticker]
     fav = ticker in favs
 
     return html.Div([
@@ -217,6 +219,7 @@ def toggle_fav(n, ticker, favs):
 
 # Favoriler sayfası
 def favorites_layout(favs):
+    info_df = load_company_info()
     return html.Div([
         html.H4("⭐ Favoriler"),
         html.Hr(),
@@ -227,9 +230,8 @@ def favorites_layout(favs):
 
 # Radar algoritması: radar=1 olanlar
 def radar_list():
-    # Son gelen veriyle radar=1 olanları döndür
-    df = company_info
-    radar_ones = df[df['radar'] == 1]['ticker'].tolist()
+    info_df = load_company_info()
+    radar_ones = info_df[info_df['radar'] == 1]['ticker'].tolist()
     return radar_ones
 
 # Radar güncelleme butonu ve sayfa
@@ -259,5 +261,7 @@ def radar_layout(radars):
 def manual_update_radar(n):
     return radar_list()
 
+# --- EN ALTA BU BLOĞU EKLE ---
+port = int(os.environ.get("PORT", 10000))
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, host="0.0.0.0", port=port)
