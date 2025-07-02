@@ -36,6 +36,7 @@ import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
 from sqlalchemy import create_engine, text as sa_text
+from sqlalchemy.engine import Engine
 import os, functools, secrets, psutil
 
 
