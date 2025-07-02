@@ -33,6 +33,7 @@ import dash_auth
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
 from sqlalchemy import create_engine, text as sa_text
