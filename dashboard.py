@@ -1,7 +1,7 @@
 # dash_company_dashboard.py
 """
-Dash-tabanlı şirket gösterge paneli
-===================================
+Dash‑tabanlı şirket gösterge paneli
+=================================
 
 • Supabase'deki **company_info** ve **excel_metrics** tablolarını kullanır.
 • Basit HTTP temel kimlik doğrulaması (env değişkenleriyle).
@@ -9,9 +9,9 @@ Dash-tabanlı şirket gösterge paneli
 • Her şirket için tüm grafikler dikey sıralı – kaydırılabilir.
 
 Gerekli pip paketleri
-----------------------
+---------------------
 ```bash
-pip install dash dash-bootstrap-components dash-auth psycopg2-binary pandas plotly
+pip install dash dash-bootstrap-components dash-auth pandas plotly sqlalchemy psycopg2-binary
 ```
 
 Ortam değişkenleri
@@ -20,20 +20,23 @@ Ortam değişkenleri
 DASH_USER, DASH_PASS           # giriş bilgileri
 DB_HOST, DB_NAME, DB_USER, DB_PASS, DB_PORT  # Supabase Postgres
 PORT                           # Render vb. için (varsayılan 10000)
+SECRET_KEY                     # Flask session anahtarı (opsiyonel)
 ```
 """
 
 import os
-from urllib.parse import urlparse, parse_qs
+from functools import lru_cache
+from urllib.parse import parse_qs, urlparse
 
 import dash
-import dash_bootstrap_components as dbc
 import dash_auth
-from dash import html, dcc, Input, Output, State, callback_context
-from dash.exceptions import PreventUpdate
+import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.graph_objects as go
-import psycopg2
+from dash import Input, Output, State, callback_context, dcc, html
+from dash.exceptions import PreventUpdate
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 # ──────────────────────────────────────────────────────────────────────────────
 # GİRİŞ / TEMEL KİMLİK DOĞRULAMA
@@ -41,40 +44,41 @@ import psycopg2
 VALID_USERS = {
     os.getenv("DASH_USER", "user"): os.getenv("DASH_PASS", "1234")
 }
+
 external_styles = [
     dbc.themes.BOOTSTRAP,
     "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
 ]
+
 app = dash.Dash(
     __name__,
     external_stylesheets=external_styles,
     suppress_callback_exceptions=True,  # dinamik bileşen ID’leri için
 )
+app.server.secret_key = os.getenv("SECRET_KEY", os.urandom(24))
 server = app.server
 _ = dash_auth.BasicAuth(app, VALID_USERS)  # noqa: F841 – kullanılmıyor ama gerekli
 
 # ──────────────────────────────────────────────────────────────────────────────
-# VERİ TABANI FONKSİYONLARI
+# VERİ TABANI BAĞLANTISI (SQLALCHEMY)
 # ──────────────────────────────────────────────────────────────────────────────
 
-def get_conn():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        database=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=os.getenv("DB_PORT", 5432),
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    """Tek bir SQLAlchemy Engine nesnesini önbelleğe alarak tekrar kullan."""
+    return create_engine(
+        f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}"
+        f"@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT', 5432)}/{os.getenv('DB_NAME')}",
+        pool_pre_ping=True,
     )
 
 
 def load_company_info() -> pd.DataFrame:
-    with get_conn() as con:
-        return pd.read_sql("SELECT * FROM company_info", con)
+    return pd.read_sql("SELECT * FROM company_info", get_engine())
 
 
 def load_metrics() -> pd.DataFrame:
-    with get_conn() as con:
-        return pd.read_sql("SELECT * FROM excel_metrics", con)
+    return pd.read_sql("SELECT * FROM excel_metrics", get_engine())
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -175,7 +179,6 @@ def make_company_link(ticker: str):
 def on_search(val):
     if not val:
         raise PreventUpdate
-    # eşleşen ilk ticker
     val_low = val.lower()
     matches = [t for t in get_all_tickers() if val_low in t.lower()]
     if not matches:
@@ -189,14 +192,11 @@ def on_search(val):
 @app.callback(
     Output("page-content", "children"),
     [
-        Input("url", "href"),  # adres değişti
+        Input("url", "href"),
         Input("btn-favs", "n_clicks"),
         Input("btn-radar", "n_clicks"),
     ],
-    [
-        State("store-favs", "data"),
-        State("store-radar", "data"),
-    ],
+    [State("store-favs", "data"), State("store-radar", "data")],
 )
 def render_page(href, fav_click, radar_click, favs, radar_data):
     ctx = callback_context
@@ -210,7 +210,6 @@ def render_page(href, fav_click, radar_click, favs, radar_data):
     if trig_id == "btn-radar":
         return radar_layout(radar_data)
 
-    # varsayılan: şirket sayfası
     ticker = parse_ticker_from_href(href) or (get_all_tickers()[0] if get_all_tickers() else None)
     return company_layout(ticker, favs) if ticker else html.Div("Şirket bulunamadı.")
 
@@ -229,7 +228,7 @@ def company_layout(ticker: str, favs: list[str]):
     info = info_row.iloc[0]
     is_fav = ticker in favs
 
-    # Üst: Ticker ve yıldız ----------------------------------------------------
+    # Üst başlık --------------------------------------------------------------
     header = dbc.Row(
         [
             dbc.Col(html.H4(ticker, className="mb-0"), width="auto"),
@@ -242,12 +241,12 @@ def company_layout(ticker: str, favs: list[str]):
     # Bilgi tablosu -----------------------------------------------------------
     table = html.Table(
         [
-            html.Tr([html.Th("Sector"), html.Td(info["sector"])]),
-            html.Tr([html.Th("Industry"), html.Td(info["industry"])]),
-            html.Tr([html.Th("Employees"), html.Td(f"{info['employees']:,}")]),
-            html.Tr([html.Th("Earnings Date"), html.Td(str(info["earnings_date"]))]),
-            html.Tr([html.Th("Market Cap"), html.Td(str(info["market_cap"]))]),
-            html.Tr([html.Th("Radar"), html.Td(str(info["radar"]))]),
+            html.Tr([html.Th("Sector"), html.Td(info["sector"]) ]),
+            html.Tr([html.Th("Industry"), html.Td(info["industry"]) ]),
+            html.Tr([html.Th("Employees"), html.Td(f"{info['employees']:,}") ]),
+            html.Tr([html.Th("Earnings Date"), html.Td(str(info["earnings_date"])) ]),
+            html.Tr([html.Th("Market Cap"), html.Td(str(info["market_cap"])) ]),
+            html.Tr([html.Th("Radar"), html.Td(str(info["radar"])) ]),
         ],
         className="table table-sm",
     )
@@ -260,11 +259,8 @@ def company_layout(ticker: str, favs: list[str]):
 
     # Grafikler --------------------------------------------------------------
     charts = [metric_chart(metrics_df, ticker, m) for m in CHART_METRICS]
-    charts = [c for c in charts if c]  # boşları at
-    charts_container = html.Div(
-        charts,
-        style={"maxHeight": "65vh", "overflowY": "auto"},
-    )
+    charts = [c for c in charts if c]
+    charts_container = html.Div(charts, style={"maxHeight": "65vh", "overflowY": "auto"})
 
     return html.Div([header, html.Hr(), table, summary, html.Hr(), charts_container])
 
@@ -277,12 +273,14 @@ def metric_chart(df: pd.DataFrame, ticker: str, metric: str):
     data = df[(df.ticker == ticker) & (df.metric == metric)].dropna(subset=["period", "value"])
     if data.empty:
         return None
+
+    # "none" metinlerini eleyip sayıya çevir
     data = data[data.value.astype(str).str.lower() != "none"].copy()
     data["value"] = data.value.astype(float)
     data = data.sort_values("period")
 
+    # "Fiyat" özel durumu: Tahmin'le birlikte çiz ---------------------------
     if metric == "Fiyat":
-        # tahmin birlikte çizilecek
         tahmin = df[(df.ticker == ticker) & (df.metric == "Tahmin")].dropna(subset=["period", "value"])
         tahmin = tahmin[tahmin.value.astype(str).str.lower() != "none"].copy()
         tahmin["value"] = tahmin.value.astype(float)
@@ -293,13 +291,17 @@ def metric_chart(df: pd.DataFrame, ticker: str, metric: str):
 
         fig = go.Figure()
         if not data.empty:
-            fig.add_trace(go.Scatter(x=data.period, y=data.value, mode="lines+markers", name="Fiyat", line=dict(color="royalblue")))
+            fig.add_trace(
+                go.Scatter(x=data.period, y=data.value, mode="lines+markers", name="Fiyat", line=dict(color="royalblue"))
+            )
         if not tahmin.empty:
-            fig.add_trace(go.Scatter(x=tahmin.period, y=tahmin.value, mode="lines+markers", name="Tahmin", line=dict(color="chocolate")))
+            fig.add_trace(
+                go.Scatter(x=tahmin.period, y=tahmin.value, mode="lines+markers", name="Tahmin", line=dict(color="chocolate"))
+            )
         fig.update_layout(title="Fiyat & Tahmin", margin=dict(l=10, r=10, t=30, b=20), height=260)
         return dcc.Graph(figure=fig, config={"displayModeBar": False})
 
-    # diğer tek çizgi metrikler
+    # Diğer metrikler --------------------------------------------------------
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data.period, y=data.value, mode="lines+markers", name=metric))
     fig.update_layout(title=metric, margin=dict(l=10, r=10, t=30, b=20), height=230)
@@ -321,10 +323,7 @@ def toggle_fav(_, href, favs):
     if not ticker:
         raise PreventUpdate
     favs = favs or []
-    if ticker in favs:
-        favs.remove(ticker)
-    else:
-        favs.append(ticker)
+    favs.remove(ticker) if ticker in favs else favs.append(ticker)
     return favs
 
 
@@ -357,11 +356,7 @@ def radar_layout(radars: list[str]):
     )
 
 
-@app.callback(
-    Output("store-radar", "data"),
-    Input("btn-update-radar", "n_clicks"),
-    prevent_initial_call=True,
-)
+@app.callback(Output("store-radar", "data"), Input("btn-update-radar", "n_clicks"), prevent_initial_call=True)
 def on_radar_update(_):
     return current_radar_list()
 
