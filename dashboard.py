@@ -45,7 +45,11 @@ external_styles = [
     dbc.themes.BOOTSTRAP,
     "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css",
 ]
-app = dash.Dash(__name__, external_stylesheets=external_styles)
+app = dash.Dash(
+    __name__,
+    external_stylesheets=external_styles,
+    suppress_callback_exceptions=True,  # dinamik bileşen ID’leri için
+)
 server = app.server
 _ = dash_auth.BasicAuth(app, VALID_USERS)  # noqa: F841 – kullanılmıyor ama gerekli
 
