@@ -260,4 +260,4 @@ def manual_update_radar(n):
     return radar_list()
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run(debug=True)
