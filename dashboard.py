@@ -106,13 +106,16 @@ app.layout = dbc.Container(
         dcc.Store(id="store-radar", storage_type="session"),
         dbc.Row(
             [
-                dbc.Col(html.H3("Şirket Dashboard", className="text-primary"), sm=6),
+                dbc.Col(
+                    search_input(),
+                    sm=6,
+                ),
                 dbc.Col(
                     [
-                        search_input(),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2"),
                         dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1"),
-                        dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False, className="ms-1"),
+                        dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
+                                   className="ms-1"),
                     ],
                     sm=6,
                     className="text-end",
@@ -121,6 +124,7 @@ app.layout = dbc.Container(
             align="center",
             className="mt-2 mb-2",
         ),
+
         html.Hr(),
         html.Div(id="page-content"),
     ],
@@ -182,21 +186,29 @@ def company_layout(ticker, favs):
         className="gap-2",
     )
     # Bilgi tablosu
-    def td_safe(val):
+    def td_safe(val, binlik=False):
         if pd.isnull(val): return "-"
-        if isinstance(val, float): return f"{val:,.0f}"
+        if binlik:
+            try:
+                return f"{int(val):,}".replace(",", ".")
+            except Exception:
+                return str(val)
+        if isinstance(val, float):
+            return f"{val:,.0f}"
         return str(val)
+
     table = html.Table(
         [
             html.Tr([html.Th("Sector"), html.Td(td_safe(info.get("sector")))]),
             html.Tr([html.Th("Industry"), html.Td(td_safe(info.get("industry")))]),
-            html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees")))]),
+            html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),  # değişti
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
-            html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap")))]),
+            html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),  # değişti
             html.Tr([html.Th("Radar"), html.Td(td_safe(info.get("radar")))]),
         ],
         className="table table-sm",
     )
+
     summary = html.Div(
         [html.H5("Summary"), html.Pre(info.get("summary") or "", style={"whiteSpace": "pre-wrap"})],
         className="p-2 border rounded",
