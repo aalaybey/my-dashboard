@@ -112,6 +112,7 @@ app.layout = dbc.Container(
                         search_input(),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2"),
                         dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1"),
+                        dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False, className="ms-1"),
                     ],
                     sm=6,
                     className="text-end",
@@ -255,7 +256,9 @@ def company_layout(ticker, favs):
     State("store-favs", "data"),
     prevent_initial_call=True,
 )
-def toggle_fav(_, href, favs):
+def toggle_fav(n_clicks, href, favs):
+    if not callback_context.triggered or callback_context.triggered[0]['prop_id'].split('.')[0] != "fav-toggle":
+        raise PreventUpdate
     ticker = parse_ticker_from_href(href)
     if not ticker:
         raise PreventUpdate
@@ -266,6 +269,7 @@ def toggle_fav(_, href, favs):
     else:
         favs.append(ticker)
     return favs
+
 
 def favorites_layout(favs):
     return html.Div(
@@ -289,6 +293,20 @@ def radar_layout(radars):
 @app.callback(Output("store-radar", "data"), Input("btn-update-radar", "n_clicks"), prevent_initial_call=True)
 def on_radar_update(_):
     return current_radar_list()
+
+@app.callback(
+    Output("btn-refresh-data", "children"),
+    Input("btn-refresh-data", "n_clicks"),
+    prevent_initial_call=True,
+)
+def refresh_data(n_clicks):
+    if not n_clicks:
+        raise PreventUpdate
+    # RAM cache'i temizle!
+    load_company_info.cache_clear()
+    load_metrics.cache_clear()
+    return "✅ Veriler güncellendi!"
+
 
 # ────────────── MAIN ──────────────
 if __name__ == "__main__":
