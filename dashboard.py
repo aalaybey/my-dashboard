@@ -92,7 +92,6 @@ def star_icon(filled):
         className="bi bi-star-fill" if filled else "bi bi-star",
         style={"fontSize": "1.8rem", "color": "#f7c948", "cursor": "pointer"},
         id="fav-toggle",
-        n_clicks=0,
         title="Favorilere ekle/çıkar"
     )
 def make_company_link(ticker):
