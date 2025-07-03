@@ -268,17 +268,20 @@ def company_layout(ticker, favs):
     prevent_initial_call=True,
 )
 def toggle_fav(n_clicks, href, favs):
-    if not callback_context.triggered or callback_context.triggered[0]['prop_id'].split('.')[0] != "fav-toggle":
+    # İlk render / layout yenilemesinde n_clicks 0 ya da None olur ⇒ işlem yapma
+    if not callback_context.triggered or not n_clicks:
         raise PreventUpdate
+
     ticker = parse_ticker_from_href(href)
     if not ticker:
         raise PreventUpdate
-    favs = favs or []
-    favs = list(favs)  # shallow copy
+
+    favs = list(favs or [])      # kopya: Dash değişikliği algılasın
     if ticker in favs:
-        favs.remove(ticker)
+        favs.remove(ticker)      # yıldız doluyken → kaldır
     else:
-        favs.append(ticker)
+        favs.append(ticker)      # yıldız boşken  → ekle
+
     return favs
 
 
