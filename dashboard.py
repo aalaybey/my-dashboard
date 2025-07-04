@@ -235,7 +235,14 @@ def company_layout(ticker, favs):
             margin=dict(l=10, r=10, t=40, b=10),
             legend=dict(orientation="h", y=1.12),
         )
-        charts.append(dcc.Graph(figure=fig, className="chart-graph"))
+        charts.append(
+            dcc.Graph(
+                figure=fig,
+                className="chart-graph",
+                config={"displayModeBar": False, "staticPlot": True}
+            )
+        )
+
     # Diğer metrikler
     for metric in [
         "MCap/CATS", "Capex/Amort", "EBIT Margin", "FCF Margin",
@@ -256,9 +263,15 @@ def company_layout(ticker, favs):
                 height=240,
                 margin=dict(l=10, r=10, t=40, b=10),
             )
-            charts.append(dcc.Graph(figure=fig, className="chart-graph"))
+            charts.append(
+                dcc.Graph(
+                    figure=fig,
+                    className="chart-graph",
+                    config={"displayModeBar": False, "staticPlot": True}
+                )
+            )
 
-    charts_container = html.Div(charts, style={"maxHeight": "65vh", "overflowY": "auto"})
+    charts_container = html.Div(charts)
     return html.Div([header, html.Hr(), table, summary, html.Hr(), charts_container])
 
 # ────────────── FAVORİ CALLBACK ──────────────
