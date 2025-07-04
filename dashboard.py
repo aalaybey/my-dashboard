@@ -167,8 +167,12 @@ def render_page(href, fav_click, radar_click, favs, radar_data):
         return favorites_layout(favs)
     if trig_id == "btn-radar":
         return radar_layout(radar_data)
-    ticker = parse_ticker_from_href(href) or (get_all_tickers()[0] if get_all_tickers() else None)
-    return company_layout(ticker, favs) if ticker else html.Div("Şirket bulunamadı.")
+    ticker = parse_ticker_from_href(href)
+    if not ticker:
+        # Hiçbir şirket seçili değilse sadece boş bir div döndür (veya dilersen hoş geldin mesajı ekle)
+        return html.Div()
+    return company_layout(ticker, favs)
+
 
 # ────────────── ŞİRKET SAYFASI ──────────────
 def company_layout(ticker, favs):
