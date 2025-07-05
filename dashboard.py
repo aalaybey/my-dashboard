@@ -397,7 +397,7 @@ def on_trigger_finansal(n_clicks, href):
     ticker = parse_ticker_from_href(href)
     if not ticker:
         raise PreventUpdate
-    s3_upload_text(f"trigger{ticker}.txt", "triggered")
+    s3_upload_text("trigger.txt", ticker)
     return "✅ Komut Gönderildi!"
 
 
