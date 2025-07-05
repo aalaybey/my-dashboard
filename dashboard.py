@@ -35,8 +35,9 @@ s3_client = boto3.client(
 )
 
 def s3_upload_text(key, text):
-    # key direkt dosya adı, prefix yok
-    s3_client.put_object(Bucket=S3_BUCKET, Key=key, Body=text.encode("utf-8"))
+    print(f"Yazılan dosya: {key}")  # Doğrulama için log
+    s3_client.put_object(Bucket=S3_BUCKET, Key=key.strip(), Body=text.encode("utf-8"))
+
 
 
 # ────────────── KİMLİK DOĞRULAMA ──────────────
