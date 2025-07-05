@@ -141,7 +141,7 @@ app.layout = dbc.Container(
                                    className="ms-1 mb-2", id="btn-home"),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2 mb-2"),
                         dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1 mb-2"),
-                        dbc.Button("Finansal İndir", id="btn-trigger-finansal", color="success", outline=False, className="me-1 mb-2"),
+                        # Finansal İndir butonu ana sayfadan kaldırıldı
                         dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
                                    className="ms-1 mb-2"),
                     ],
@@ -217,7 +217,16 @@ def company_layout(ticker, favs):
         align="center",
         className="gap-2",
     )
-    # Bilgi tablosu
+    # ŞİRKETE ÖZEL FİNANSAL İNDİR BUTONU
+    finansal_indir_btn = dbc.Button(
+        "Finansal İndir",
+        id="btn-trigger-finansal",
+        color="success",
+        outline=False,
+        className="me-1 mb-2",
+        n_clicks=0,
+    )
+
     def td_safe(val, binlik=False):
         if pd.isnull(val): return "-"
         if binlik:
@@ -303,7 +312,15 @@ def company_layout(ticker, favs):
             )
 
     charts_container = html.Div(charts)
-    return html.Div([header, html.Hr(), table, summary, html.Hr(), charts_container])
+    return html.Div([
+        header,
+        html.Hr(),
+        finansal_indir_btn,  # <-- Şirket sayfasında sadece burada gösteriliyor
+        table,
+        summary,
+        html.Hr(),
+        charts_container
+    ])
 
 # ────────────── FAVORİ CALLBACK ──────────────
 @app.callback(
@@ -371,13 +388,16 @@ def refresh_data(n_clicks):
 @app.callback(
     Output("btn-trigger-finansal", "children"),
     Input("btn-trigger-finansal", "n_clicks"),
+    State("url", "href"),
     prevent_initial_call=True,
 )
-def on_trigger_finansal(n_clicks):
+def on_trigger_finansal(n_clicks, href):
     if not n_clicks:
         raise PreventUpdate
-    # S3_PREFIX KALDIRILDI, direkt bucket kökü
-    s3_upload_text("trigger.txt", "triggered")
+    ticker = parse_ticker_from_href(href)
+    if not ticker:
+        raise PreventUpdate
+    s3_upload_text(f"trigger{ticker}.txt", "triggered")
     return "✅ Komut Gönderildi!"
 
 
