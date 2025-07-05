@@ -12,6 +12,32 @@ import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
 from sqlalchemy import create_engine, text as sa_text
+import boto3
+from io import BytesIO
+from botocore.client import Config  # EKLENDİ
+
+
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET")
+AWS_REGION = os.getenv("AWS_REGION") or "eu-central-1"
+S3_BUCKET = "alaybey"
+# S3_PREFIX = "s3/"   # Kaldırıldı, prefix yok artık
+
+ENDPOINT_URL = f"https://s3.{AWS_REGION}.wasabisys.com"  # EKLENDİ
+
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION,
+    endpoint_url=ENDPOINT_URL,               # EKLENDİ
+    config=Config(signature_version="s3v4"),  # EKLENDİ (Wasabi için zorunlu)
+)
+
+def s3_upload_text(key, text):
+    # key direkt dosya adı, prefix yok
+    s3_client.put_object(Bucket=S3_BUCKET, Key=key, Body=text.encode("utf-8"))
+
 
 # ────────────── KİMLİK DOĞRULAMA ──────────────
 VALID_USERS = {
@@ -115,6 +141,7 @@ app.layout = dbc.Container(
                                    className="ms-1", id="btn-home"),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2"),
                         dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1"),
+                        dbc.Button("Finansal İndir", id="btn-trigger-finansal", color="success", outline=False, className="me-1"),
                         dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
                                    className="ms-1"),
                     ],
@@ -339,6 +366,19 @@ def refresh_data(n_clicks):
     load_company_info.cache_clear()
     load_metrics.cache_clear()
     return "✅ Veriler güncellendi!"
+
+
+@app.callback(
+    Output("btn-trigger-finansal", "children"),
+    Input("btn-trigger-finansal", "n_clicks"),
+    prevent_initial_call=True,
+)
+def on_trigger_finansal(n_clicks):
+    if not n_clicks:
+        raise PreventUpdate
+    # S3_PREFIX KALDIRILDI, direkt bucket kökü
+    s3_upload_text("trigger.txt", "triggered")
+    return "✅ Komut Gönderildi!"
 
 
 # ────────────── MAIN ──────────────
