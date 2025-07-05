@@ -138,12 +138,12 @@ app.layout = dbc.Container(
                 dbc.Col(
                     [
                         dbc.Button("Ana Sayfa", href="https://alaybey.onrender.com/", color="primary", outline=True,
-                                   className="my-2", id="btn-home"),
-                        dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="my-2"),
-                        dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="my-2"),
-                        dbc.Button("Finansal İndir", id="btn-trigger-finansal", color="success", outline=False, className="my-2"),
+                                   className="ms-1 mb-2", id="btn-home"),
+                        dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2 mb-2"),
+                        dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1 mb-2"),
+                        dbc.Button("Finansal İndir", id="btn-trigger-finansal", color="success", outline=False, className="me-1 mb-2"),
                         dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
-                                   className="my-2"),
+                                   className="ms-1 mb-2"),
                     ],
                     sm=6,
                     className="text-end",
