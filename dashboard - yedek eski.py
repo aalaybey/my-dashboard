@@ -16,10 +16,12 @@ import boto3
 from io import BytesIO
 from botocore.client import Config  # EKLENDİ
 
+
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET")
 AWS_REGION = os.getenv("AWS_REGION") or "eu-central-1"
 S3_BUCKET = "alaybey"
+# S3_PREFIX = "s3/"   # Kaldırıldı, prefix yok artık
 
 ENDPOINT_URL = f"https://s3.{AWS_REGION}.wasabisys.com"  # EKLENDİ
 
@@ -34,6 +36,8 @@ s3_client = boto3.client(
 
 def s3_upload_text(key, text):
     s3_client.put_object(Bucket=S3_BUCKET, Key=key.strip(), Body=text.encode("utf-8"))
+
+
 
 # ────────────── KİMLİK DOĞRULAMA ──────────────
 VALID_USERS = {
@@ -196,6 +200,7 @@ def render_page(href, fav_click, radar_click, favs, radar_data):
         return html.Div()
     return company_layout(ticker, favs)
 
+
 # ────────────── ŞİRKET SAYFASI ──────────────
 def company_layout(ticker, favs):
     info = load_company_info(ticker)
@@ -211,6 +216,15 @@ def company_layout(ticker, favs):
         ],
         align="center",
         className="gap-2",
+    )
+    # ŞİRKETE ÖZEL FİNANSAL İNDİR BUTONU
+    finansal_indir_btn = dbc.Button(
+        "Finansal İndir",
+        id="btn-trigger-finansal",
+        color="success",
+        outline=False,
+        className="me-1 mb-2",
+        n_clicks=0,
     )
 
     def td_safe(val, binlik=False):
@@ -228,9 +242,9 @@ def company_layout(ticker, favs):
         [
             html.Tr([html.Th("Sector"), html.Td(td_safe(info.get("sector")))]),
             html.Tr([html.Th("Industry"), html.Td(td_safe(info.get("industry")))]),
-            html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),
+            html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),  # değişti
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
-            html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),
+            html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),  # değişti
             html.Tr([html.Th("Radar"), html.Td(td_safe(info.get("radar")))]),
         ],
         className="table table-sm",
@@ -301,6 +315,7 @@ def company_layout(ticker, favs):
     return html.Div([
         header,
         html.Hr(),
+        finansal_indir_btn,  # <-- Şirket sayfasında sadece burada gösteriliyor
         table,
         summary,
         html.Hr(),
@@ -368,6 +383,23 @@ def refresh_data(n_clicks):
     load_company_info.cache_clear()
     load_metrics.cache_clear()
     return "✅ Veriler güncellendi!"
+
+
+@app.callback(
+    Output("btn-trigger-finansal", "children"),
+    Input("btn-trigger-finansal", "n_clicks"),
+    State("url", "href"),
+    prevent_initial_call=True,
+)
+def on_trigger_finansal(n_clicks, href):
+    if not n_clicks:
+        raise PreventUpdate
+    ticker = parse_ticker_from_href(href)
+    if not ticker:
+        raise PreventUpdate
+    s3_upload_text("trigger.txt", ticker)
+    return "✅ Komut Gönderildi!"
+
 
 # ────────────── MAIN ──────────────
 if __name__ == "__main__":
