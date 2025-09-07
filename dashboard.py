@@ -260,7 +260,14 @@ def company_layout(ticker, favs):
         pos_max = np.nanmax(y_price) if np.isfinite(np.nanmax(y_price)) else 0.0
 
         # Pozitif max’a göre negatif tarafın aynasını kur
-        lower_bound = -pos_max
+        # Negatif tahmin varsa ayna kur; yoksa yalnız pozitif log eksen
+        has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
+        if has_neg_pred:
+            lower_bound = -pos_max
+        else:
+            # Negatif yoksa alt sınırı pozitif tarafta tut (ayna olmasın)
+            lower_bound = float(np.floor(np.nanmin(y_price))) if np.isfinite(np.nanmin(y_price)) else 0.0
+
         upper_bound = pos_max
 
         # 2) Tahminleri signed-log’a çevir (negatif ise alt tarafa düşer)
@@ -281,20 +288,21 @@ def company_layout(ticker, favs):
         if pred_max is not None and pred_max > upper_bound:
             upper_bound = pred_max
 
-        # Y-ekseni limitleri
-        ylim = (lower_bound, upper_bound)
-
-        # Güzel tikler: ...,-10^2,-10^1,0,10^1,10^2,...
+        # Üst limiti güvenli yuvarla (taşmayı engelle)
         k_min = int(np.floor(lower_bound)) if np.isfinite(lower_bound) else -1
         k_max = int(np.ceil(upper_bound)) if np.isfinite(upper_bound) else 1
+
+        # Tick değerleri (…,-100,-10,0,10,100,…) — normal sayı olarak yaz
         tickvals = list(range(k_min, k_max + 1))
         ticktext = []
         for k in tickvals:
             if k == 0:
                 ticktext.append("0")
             else:
-                # signed-log ölçek için sayıları doğrudan göster (-100, -10, 10, 100 gibi)
                 ticktext.append(str(int(np.sign(k) * (10 ** abs(k)))))
+
+        # Y-ekseni aralığı: integer log-güç aralığına sabitle
+        ylim = (k_min, k_max)
 
         # --- Çizim
         fig = go.Figure()
@@ -313,16 +321,28 @@ def company_layout(ticker, favs):
             line=dict(width=2, color="#a6761d"),
             marker=dict(size=5)
         ))
+        # Son tahmin noktasını etiketle (orijinal değeri yaz)
+        if len(d_pred) > 0 and np.isfinite(y_pred[-1]):
+            last_text = f"{float(d_pred['value'].iloc[-1]):,.2f}"
+            fig.add_trace(go.Scatter(
+                x=[d_pred['period'].iloc[-1]], y=[y_pred[-1]],
+                text=[last_text], mode="text",
+                textposition="middle right",
+                showlegend=False
+            ))
 
         fig.update_layout(
-            title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
+            title=dict(
+                text="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
+                y=0.98, x=0.01, xanchor="left", yanchor="top"  # başlığı grafiğin içine sabitle
+            ),
             height=560,
-            margin=dict(l=10, r=10, t=40, b=10),
-            legend=dict(orientation="h", y=1.12)
+            margin=dict(l=10, r=10, t=80, b=60),  # üst/bottom marjı büyüt
+            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")  # lejandı alta indir
         )
 
         fig.update_yaxes(
-            range=[ylim[0], ylim[1]],
+            range=[k_min, k_max],  # taşmayı önlemek için tamsayı güç aralığı
             tickvals=tickvals,
             ticktext=ticktext,
             zeroline=True,
@@ -333,6 +353,7 @@ def company_layout(ticker, favs):
             dcc.Graph(
                 figure=fig,
                 className="chart-graph",
+                style={"marginTop": "8px"},  # üstte minicik boşluk
                 config={"displayModeBar": False, "staticPlot": True}
             )
         )
