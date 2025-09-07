@@ -245,23 +245,57 @@ def company_layout(ticker, favs):
     fiyat_df = metrics_df[metrics_df.metric.isin(["Fiyat", "Tahmin"])]
     if not fiyat_df.empty:
         fig = go.Figure()
-        for metric, color in zip(["Fiyat", "Tahmin"], ["#1976d2", "#a6761d"]):
-            d = fiyat_df[fiyat_df.metric == metric]
-            if not d.empty:
-                fig.add_trace(go.Scatter(
-                    x=d.period,
-                    y=d.value,
-                    mode="lines+markers",
-                    name=metric,
-                    line=dict(width=2, color=color),
-                ))
+
+        # Fiyat → logaritmik (sol eksen)
+        d_fiyat = fiyat_df[fiyat_df.metric == "Fiyat"].copy()
+        if not d_fiyat.empty:
+            d_fiyat.loc[d_fiyat["value"] <= 0, "value"] = None
+            fig.add_trace(go.Scatter(
+                x=d_fiyat.period,
+                y=d_fiyat.value,
+                mode="lines+markers",
+                name="Fiyat",
+                line=dict(width=2, color="#1976d2"),
+                yaxis="y1"
+            ))
+
+        # Tahmin → linear (sağ eksen)
+        d_tahmin = fiyat_df[fiyat_df.metric == "Tahmin"].copy()
+        if not d_tahmin.empty:
+            fig.add_trace(go.Scatter(
+                x=d_tahmin.period,
+                y=d_tahmin.value,
+                mode="lines+markers",
+                name="Tahmin",
+                line=dict(width=2, color="#a6761d"),
+                yaxis="y2"
+            ))
+
         fig.update_layout(
             title="Fiyat & Tahmin",
             height=560,
-            margin=dict(l=10, r=10, t=40, b=10),
-            legend=dict(orientation="h", y=1.12),
+            margin=dict(l=10, r=10, t=80, b=40),  # üst boşluğu artırdık
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.05,
+                xanchor="center",
+                x=0.5
+            ),
+            yaxis=dict(
+                title="Fiyat (Log)",
+                type="log",
+                showgrid=True
+            ),
+            yaxis2=dict(
+                title="Tahmin (Linear)",
+                overlaying="y",
+                side="right",
+                type="linear",
+                showgrid=False
+            )
         )
-        fig.update_yaxes(type="log")
+
         charts.append(
             dcc.Graph(
                 figure=fig,
@@ -269,6 +303,7 @@ def company_layout(ticker, favs):
                 config={"displayModeBar": False, "staticPlot": True}
             )
         )
+
 
     # Diğer metrikler
     for metric in [
