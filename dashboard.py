@@ -347,6 +347,7 @@ def company_layout(ticker, favs):
                 ticktext=ticktext if 'ticktext' in locals() else None
             )
 
+
         )
 
         charts.append(
