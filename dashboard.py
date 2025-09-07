@@ -316,7 +316,7 @@ def company_layout(ticker, favs):
 
         fig.update_layout(
             title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
-            height=1120,
+            height=560,
             margin=dict(l=10, r=10, t=40, b=10),
             legend=dict(orientation="h", y=1.12)
         )
