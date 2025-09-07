@@ -246,13 +246,8 @@ def company_layout(ticker, favs):
     fiyat_df = metrics_df[metrics_df.metric.isin(["Fiyat", "Tahmin"])]
     if not fiyat_df.empty:
         # --- Hazırlık
-        # NULL period / value olanları at ve sıralayıp index’i düzelt
-        d_price = (fiyat_df[fiyat_df.metric == "Fiyat"]
-                   .dropna(subset=["period", "value"])
-                   .sort_values("period").reset_index(drop=True))
-        d_pred = (fiyat_df[fiyat_df.metric == "Tahmin"]
-                  .dropna(subset=["period", "value"])
-                  .sort_values("period").reset_index(drop=True))
+        d_price = fiyat_df[fiyat_df.metric == "Fiyat"].sort_values("period")
+        d_pred = fiyat_df[fiyat_df.metric == "Tahmin"].sort_values("period")
 
         def signed_log(arr):
             arr = np.asarray(pd.to_numeric(arr, errors="coerce"), dtype=float)
@@ -351,19 +346,14 @@ def company_layout(ticker, favs):
                 showlegend=False
             ))
 
-        # Kategorileri sadece GEÇERLİ period’lardan oluştur (None/NaT yok)
-        cats_price = d_price["period"].astype(str).tolist()
-        cats_pred = d_pred["period"].astype(str).tolist()
-        cats = pd.Index(cats_price).union(pd.Index(cats_pred))  # temiz birleşim
-
-        # Sağdan taşmayı kesmek için küçük ped
-        right_pad = 0.02
+        # X-ekseni: kategorileri sabitle ve sağa ped ver (sağdan taşma olmasın)
+        cats = pd.Index(d_price["period"].astype(str)).union(d_pred["period"].astype(str))
         fig.update_xaxes(
             type="category",
             categoryorder="array",
             categoryarray=list(cats),
-            range=[-0.5, len(cats) - right_pad],
-            automargin=True
+            range=[-0.6, len(cats) - 0.02],  # sağ ped
+            automargin=True  # x-etiketleri için alt boşluğu otomatik büyüt
         )
 
         fig.update_layout(
