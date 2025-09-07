@@ -259,24 +259,25 @@ def company_layout(ticker, favs):
         y_price = signed_log(d_price["value"].values)
         pos_max = np.nanmax(y_price) if np.isfinite(np.nanmax(y_price)) else 0.0
 
-        # Pozitif max’a göre negatif tarafın aynasını kur
-        # Negatif tahmin varsa ayna kur; yoksa yalnız pozitif log eksen
-        has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
-        if has_neg_pred:
-            lower_bound = -pos_max
-        else:
-            # Negatif yoksa alt sınırı pozitif tarafta tut (ayna olmasın)
-            lower_bound = float(np.floor(np.nanmin(y_price))) if np.isfinite(np.nanmin(y_price)) else 0.0
-
-        upper_bound = pos_max
-
-        # 2) Tahminleri signed-log’a çevir (negatif ise alt tarafa düşer)
+        # 2) Tahminleri signed-log’a çevir (negatif varsa alt tarafa düşer)
         y_pred_raw = signed_log(d_pred["value"].values)
 
-        # 3) Negatif aynanın dışına taşanları kliple (alt sınıra eşitle)
-        y_pred = np.copy(y_pred_raw)
-        if np.isfinite(lower_bound):
-            y_pred = np.where(y_pred < lower_bound, lower_bound, y_pred)
+        # Ayna/simetri SADECE negatif tahmin varsa devrede
+        has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
+
+        if has_neg_pred:
+            # Aynayı aç: negatif limit = pozitif limitin simetriği
+            lower_bound = -pos_max
+            upper_bound = pos_max
+            # Sadece bu modda negatifte dışarı taşanları kliple
+            y_pred = np.where(y_pred_raw < lower_bound, lower_bound, y_pred_raw)
+        else:
+            # Aynayı kapat: tek eksen log (fiyat + tahmin) ve KLİP YOK
+            # Alt sınırı her iki serinin minimumuna göre belirle
+            min_pos = np.nanmin([np.nanmin(y_price), np.nanmin(y_pred_raw)])
+            lower_bound = int(np.floor(min_pos)) if np.isfinite(min_pos) else 0
+            upper_bound = pos_max
+            y_pred = y_pred_raw
 
         # 4) Pozitif tarafta fiyat üstünü aşan tahmin varsa, ekseni genişlet (güvenli)
         pred_max = None

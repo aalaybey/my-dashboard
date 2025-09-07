@@ -313,6 +313,20 @@ def company_layout(ticker, favs):
             mode="lines", name="Fiyat",
             line=dict(width=2, color="#1976d2")
         ))
+        # Son FİYAT noktasını etiketle (son GEÇERLİ noktaya; mavi ve üstte)
+        valid_idx_price = np.where(np.isfinite(y_price))[0]
+        if valid_idx_price.size:
+            i = int(valid_idx_price[-1])
+            last_price_text = f"{float(d_price['value'].iloc[i]):,.2f}"
+            fig.add_trace(go.Scatter(
+                x=[d_price['period'].iloc[i]], y=[y_price[i]],
+                text=[last_price_text],
+                mode="text",
+                textposition="middle right",  # tahminle aynı yana
+                textfont=dict(size=11, color="#1976d2"),  # mavi görünsün
+                hoverinfo="skip",
+                showlegend=False
+            ))
 
         # Tahmin (turuncu): nokta + çizgi, klip uygulanmış değerlerle
         fig.add_trace(go.Scatter(
@@ -331,14 +345,23 @@ def company_layout(ticker, favs):
                 showlegend=False
             ))
 
+        # X-ekseni: kategorileri sabitle ve sağa ped ver (sağdan taşma olmasın)
+        cats = pd.Index(d_price["period"].astype(str)).union(d_pred["period"].astype(str))
+        fig.update_xaxes(
+            type="category",
+            categoryorder="array",
+            categoryarray=list(cats),
+            range=[-0.6, len(cats) - 0.02],  # sağ ped
+            automargin=True  # x-etiketleri için alt boşluğu otomatik büyüt
+        )
+
         fig.update_layout(
-            title=dict(
-                text="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
-                y=0.98, x=0.01, xanchor="left", yanchor="top"  # başlığı grafiğin içine sabitle
-            ),
+            title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
             height=560,
-            margin=dict(l=10, r=10, t=80, b=60),  # üst/bottom marjı büyüt
-            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")  # lejandı alta indir
+            # alttan taşmayı kesin bitirmek için alt marjı büyüt
+            margin=dict(l=12, r=32, t=80, b=160),
+            # lejandı GRAFİĞİN İÇİNDE alt tarafa al (y=0.02)
+            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
         )
 
         fig.update_yaxes(
