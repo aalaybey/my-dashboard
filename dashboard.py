@@ -313,6 +313,16 @@ def company_layout(ticker, favs):
             mode="lines", name="Fiyat",
             line=dict(width=2, color="#1976d2")
         ))
+        # Son FİYAT noktasını etiketle (tahminde olduğu gibi)
+        if len(d_price) > 0 and np.isfinite(y_price[-1]):
+            last_price_text = f"{float(d_price['value'].iloc[-1]):,.2f}"
+            fig.add_trace(go.Scatter(
+                x=[d_price['period'].iloc[-1]], y=[y_price[-1]],
+                text=[last_price_text],
+                mode="text",
+                textposition="middle right",  # tahminle aynı yana yaz
+                showlegend=False
+            ))
 
         # Tahmin (turuncu): nokta + çizgi, klip uygulanmış değerlerle
         fig.add_trace(go.Scatter(
@@ -331,14 +341,20 @@ def company_layout(ticker, favs):
                 showlegend=False
             ))
 
+        # X-ekseni: kategorileri sabitle ve sağa ped ver (sağdan taşma olmasın)
+        cats = pd.Index(d_price["period"].astype(str)).union(d_pred["period"].astype(str))
+        fig.update_xaxes(
+            type="category",
+            categoryorder="array",
+            categoryarray=list(cats),
+            range=[-0.5, len(cats) - 0.15]  # sağda ~%15 ped
+        )
+
         fig.update_layout(
-            title=dict(
-                text="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
-                y=0.98, x=0.01, xanchor="left", yanchor="top"  # başlığı grafiğin içine sabitle
-            ),
+            title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
             height=560,
-            margin=dict(l=10, r=10, t=80, b=60),  # üst/bottom marjı büyüt
-            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")  # lejandı alta indir
+            margin=dict(l=10, r=18, t=80, b=92),  # alt ve sağ marj biraz arttı
+            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
         )
 
         fig.update_yaxes(
