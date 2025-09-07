@@ -8,6 +8,7 @@ import dash
 import dash_auth
 import dash_bootstrap_components as dbc
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
@@ -244,27 +245,115 @@ def company_layout(ticker, favs):
     charts = []
     fiyat_df = metrics_df[metrics_df.metric.isin(["Fiyat", "Tahmin"])]
     if not fiyat_df.empty:
+        # --- Hazırlık
+        d_price = fiyat_df[fiyat_df.metric == "Fiyat"].sort_values("period")
+        d_pred = fiyat_df[fiyat_df.metric == "Tahmin"].sort_values("period")
+
+        def signed_log(arr):
+            arr = np.asarray(pd.to_numeric(arr, errors="coerce"), dtype=float)
+            # 0 değerlerini çizmiyoruz (log tanımsız)
+            arr[arr == 0] = np.nan
+            return np.sign(arr) * np.log10(np.abs(arr))
+
+        # 1) Fiyat: pozitif log (TradingView tarzı, base10)
+        y_price = signed_log(d_price["value"].values)
+        pos_max = np.nanmax(y_price) if np.isfinite(np.nanmax(y_price)) else 0.0
+
+        # Pozitif max’a göre negatif tarafın aynasını kur
+        # Negatif tahmin varsa ayna kur; yoksa yalnız pozitif log eksen
+        has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
+        if has_neg_pred:
+            lower_bound = -pos_max
+        else:
+            # Negatif yoksa alt sınırı pozitif tarafta tut (ayna olmasın)
+            lower_bound = float(np.floor(np.nanmin(y_price))) if np.isfinite(np.nanmin(y_price)) else 0.0
+
+        upper_bound = pos_max
+
+        # 2) Tahminleri signed-log’a çevir (negatif ise alt tarafa düşer)
+        y_pred_raw = signed_log(d_pred["value"].values)
+
+        # 3) Negatif aynanın dışına taşanları kliple (alt sınıra eşitle)
+        y_pred = np.copy(y_pred_raw)
+        if np.isfinite(lower_bound):
+            y_pred = np.where(y_pred < lower_bound, lower_bound, y_pred)
+
+        # 4) Pozitif tarafta fiyat üstünü aşan tahmin varsa, ekseni genişlet (güvenli)
+        pred_max = None
+        try:
+            pred_max = float(np.nanmax(y_pred_raw))
+        except (ValueError, TypeError):
+            pred_max = None
+
+        if pred_max is not None and pred_max > upper_bound:
+            upper_bound = pred_max
+
+        # Üst limiti güvenli yuvarla (taşmayı engelle)
+        k_min = int(np.floor(lower_bound)) if np.isfinite(lower_bound) else -1
+        k_max = int(np.ceil(upper_bound)) if np.isfinite(upper_bound) else 1
+
+        # Tick değerleri (…,-100,-10,0,10,100,…) — normal sayı olarak yaz
+        tickvals = list(range(k_min, k_max + 1))
+        ticktext = []
+        for k in tickvals:
+            if k == 0:
+                ticktext.append("0")
+            else:
+                ticktext.append(str(int(np.sign(k) * (10 ** abs(k)))))
+
+        # Y-ekseni aralığı: integer log-güç aralığına sabitle
+        ylim = (k_min, k_max)
+
+        # --- Çizim
         fig = go.Figure()
-        for metric, color in zip(["Fiyat", "Tahmin"], ["#1976d2", "#a6761d"]):
-            d = fiyat_df[fiyat_df.metric == metric]
-            if not d.empty:
-                fig.add_trace(go.Scatter(
-                    x=d.period,
-                    y=d.value,
-                    mode="lines+markers",
-                    name=metric,
-                    line=dict(width=2, color=color),
-                ))
+
+        # Fiyat (mavi): pozitif log tarafı
+        fig.add_trace(go.Scatter(
+            x=d_price["period"], y=y_price,
+            mode="lines", name="Fiyat",
+            line=dict(width=2, color="#1976d2")
+        ))
+
+        # Tahmin (turuncu): nokta + çizgi, klip uygulanmış değerlerle
+        fig.add_trace(go.Scatter(
+            x=d_pred["period"], y=y_pred,
+            mode="lines+markers", name="Tahmin",
+            line=dict(width=2, color="#a6761d"),
+            marker=dict(size=5)
+        ))
+        # Son tahmin noktasını etiketle (orijinal değeri yaz)
+        if len(d_pred) > 0 and np.isfinite(y_pred[-1]):
+            last_text = f"{float(d_pred['value'].iloc[-1]):,.2f}"
+            fig.add_trace(go.Scatter(
+                x=[d_pred['period'].iloc[-1]], y=[y_pred[-1]],
+                text=[last_text], mode="text",
+                textposition="middle right",
+                showlegend=False
+            ))
+
         fig.update_layout(
-            title="Fiyat & Tahmin",
-            height=280,
-            margin=dict(l=10, r=10, t=40, b=10),
-            legend=dict(orientation="h", y=1.12),
+            title=dict(
+                text="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
+                y=0.98, x=0.01, xanchor="left", yanchor="top"  # başlığı grafiğin içine sabitle
+            ),
+            height=560,
+            margin=dict(l=10, r=10, t=80, b=60),  # üst/bottom marjı büyüt
+            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")  # lejandı alta indir
         )
+
+        fig.update_yaxes(
+            range=[k_min, k_max],  # taşmayı önlemek için tamsayı güç aralığı
+            tickvals=tickvals,
+            ticktext=ticktext,
+            zeroline=True,
+            zerolinewidth=1
+        )
+
         charts.append(
             dcc.Graph(
                 figure=fig,
                 className="chart-graph",
+                style={"marginTop": "8px"},  # üstte minicik boşluk
                 config={"displayModeBar": False, "staticPlot": True}
             )
         )
