@@ -8,6 +8,7 @@ import dash
 import dash_auth
 import dash_bootstrap_components as dbc
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
@@ -259,17 +260,65 @@ def company_layout(ticker, favs):
                 yaxis="y1"
             ))
 
-        # Tahmin → linear (sağ eksen)
+        # Tahmin → fiyat log eksenine haritala ve y1 üzerinde çiz
         d_tahmin = fiyat_df[fiyat_df.metric == "Tahmin"].copy()
-        if not d_tahmin.empty:
+        if not d_tahmin.empty and not d_fiyat.empty:
+            # 1) Ortak dönemlerde Price & Pred'i hizala
+            m = pd.merge(
+                d_fiyat[["period", "value"]].rename(columns={"value": "price"}),
+                d_tahmin[["period", "value"]].rename(columns={"value": "pred"}),
+                on="period",
+                how="inner",
+            ).dropna()
+
+            # 2) Negatif tahminleri log'a uygun olacak şekilde pozitife kaydır
+            if not m.empty:
+                c = float(max(1.0, -m["pred"].min() + 1.0))
+                shifted = m["pred"] + c
+                # Güvenlik: price pozitif olmalı
+                m = m[m["price"] > 0]
+
+                if not m.empty and (shifted > 0).all():
+                    # 3) Log-uzayda ölçek katsayısı: s = exp(mean(log(price) - log(pred+c)))
+                    s = float(np.exp(np.mean(np.log(m["price"].values) - np.log(shifted.values))))
+                else:
+                    # veri probleminde düşecek emniyet
+                    s = 1.0
+                    c = 1.0
+            else:
+                # ortak dönem yoksa emniyet
+                s = 1.0
+                c = 1.0
+
+            # 4) Tüm tahmin serisini fiyat eksenine taşı: mapped = s * (pred + c)
+            d_tahmin["mapped"] = s * (d_tahmin["value"] + c)
+
+            # 5) Tahmini y1 (log) ekseni üzerinde, turuncu çizgi olarak çiz
             fig.add_trace(go.Scatter(
                 x=d_tahmin.period,
-                y=d_tahmin.value,
+                y=d_tahmin["mapped"],
                 mode="lines+markers",
                 name="Tahmin",
                 line=dict(width=2, color="#a6761d"),
-                yaxis="y2"
+                yaxis="y1"
             ))
+
+            # 6) Sağ ekseni, sol log eksenine bire bir karşılık gelecek etiketlerle kur
+            #    Log ölçekte makul tick'ler: 10^k
+            y1_vals = pd.concat([
+                d_fiyat["value"].dropna(),
+                d_tahmin["mapped"].dropna()
+            ])
+            y1_pos = y1_vals[y1_vals > 0]
+            if not y1_pos.empty:
+                y_min, y_max = float(y1_pos.min()), float(y1_pos.max())
+                kmin = int(np.floor(np.log10(y_min)))
+                kmax = int(np.ceil(np.log10(y_max)))
+                tickvals = [10 ** k for k in range(kmin, kmax + 1)]
+                # Sağ eksen orijinal tahmin birimi: pred = (y / s) - c
+                ticktext = [f"{(tv / s) - c:,.0f}" for tv in tickvals]
+            else:
+                tickvals, ticktext = None, None
 
         fig.update_layout(
             title="Fiyat & Tahmin",
@@ -288,12 +337,16 @@ def company_layout(ticker, favs):
                 showgrid=True
             ),
             yaxis2=dict(
-                title="Tahmin (Linear)",
+                title="Tahmin (Orijinal Birim)",
                 overlaying="y",
                 side="right",
                 type="linear",
-                showgrid=False
+                showgrid=False,
+                tickmode="array",
+                tickvals=tickvals if 'tickvals' in locals() else None,
+                ticktext=ticktext if 'ticktext' in locals() else None
             )
+
         )
 
         charts.append(
