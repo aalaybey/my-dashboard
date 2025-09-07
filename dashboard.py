@@ -359,9 +359,9 @@ def company_layout(ticker, favs):
             title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
             height=560,
             # alttan taşmayı kesin bitirmek için alt marjı büyüt
-            margin=dict(l=12, r=32, t=80, b=130),
+            margin=dict(l=12, r=32, t=80, b=160),
             # lejandı GRAFİĞİN İÇİNDE alt tarafa al (y=0.02)
-            legend=dict(orientation="h", y=0.02, yanchor="bottom", x=0.01, xanchor="left")
+            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
         )
 
         fig.update_yaxes(
