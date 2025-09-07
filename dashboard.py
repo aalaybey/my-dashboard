@@ -313,14 +313,18 @@ def company_layout(ticker, favs):
             mode="lines", name="Fiyat",
             line=dict(width=2, color="#1976d2")
         ))
-        # Son FİYAT noktasını etiketle (tahminde olduğu gibi)
-        if len(d_price) > 0 and np.isfinite(y_price[-1]):
-            last_price_text = f"{float(d_price['value'].iloc[-1]):,.2f}"
+        # Son FİYAT noktasını etiketle (son GEÇERLİ noktaya; mavi ve üstte)
+        valid_idx_price = np.where(np.isfinite(y_price))[0]
+        if valid_idx_price.size:
+            i = int(valid_idx_price[-1])
+            last_price_text = f"{float(d_price['value'].iloc[i]):,.2f}"
             fig.add_trace(go.Scatter(
-                x=[d_price['period'].iloc[-1]], y=[y_price[-1]],
+                x=[d_price['period'].iloc[i]], y=[y_price[i]],
                 text=[last_price_text],
                 mode="text",
-                textposition="middle right",  # tahminle aynı yana yaz
+                textposition="middle right",  # tahminle aynı yana
+                textfont=dict(size=11, color="#1976d2"),  # mavi görünsün
+                hoverinfo="skip",
                 showlegend=False
             ))
 
@@ -347,13 +351,13 @@ def company_layout(ticker, favs):
             type="category",
             categoryorder="array",
             categoryarray=list(cats),
-            range=[-0.5, len(cats) - 0.15]  # sağda ~%15 ped
+            range=[-0.6, len(cats) - 0.02]  # sağ ped ↑; etiketler kesilmesin
         )
 
         fig.update_layout(
             title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
             height=560,
-            margin=dict(l=10, r=18, t=80, b=92),  # alt ve sağ marj biraz arttı
+            margin=dict(l=12, r=32, t=80, b=110),
             legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
         )
 
