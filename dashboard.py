@@ -8,6 +8,7 @@ import dash
 import dash_auth
 import dash_bootstrap_components as dbc
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 from dash import Input, Output, State, callback_context, dcc, html
 from dash.exceptions import PreventUpdate
@@ -244,23 +245,90 @@ def company_layout(ticker, favs):
     charts = []
     fiyat_df = metrics_df[metrics_df.metric.isin(["Fiyat", "Tahmin"])]
     if not fiyat_df.empty:
+        # --- Hazırlık
+        d_price = fiyat_df[fiyat_df.metric == "Fiyat"].sort_values("period")
+        d_pred = fiyat_df[fiyat_df.metric == "Tahmin"].sort_values("period")
+
+        def signed_log(arr):
+            arr = np.asarray(pd.to_numeric(arr, errors="coerce"), dtype=float)
+            # 0 değerlerini çizmiyoruz (log tanımsız)
+            arr[arr == 0] = np.nan
+            return np.sign(arr) * np.log10(np.abs(arr))
+
+        # 1) Fiyat: pozitif log (TradingView tarzı, base10)
+        y_price = signed_log(d_price["value"].values)
+        pos_max = np.nanmax(y_price) if np.isfinite(np.nanmax(y_price)) else 0.0
+
+        # Pozitif max’a göre negatif tarafın aynasını kur
+        lower_bound = -pos_max
+        upper_bound = pos_max
+
+        # 2) Tahminleri signed-log’a çevir (negatif ise alt tarafa düşer)
+        y_pred_raw = signed_log(d_pred["value"].values)
+
+        # 3) Negatif aynanın dışına taşanları kliple (alt sınıra eşitle)
+        y_pred = np.copy(y_pred_raw)
+        if np.isfinite(lower_bound):
+            y_pred = np.where(y_pred < lower_bound, lower_bound, y_pred)
+
+        # 4) Pozitif tarafta fiyat üstünü aşan tahmin varsa, ekseni genişlet (güvenli)
+        pred_max = None
+        try:
+            pred_max = float(np.nanmax(y_pred_raw))
+        except (ValueError, TypeError):
+            pred_max = None
+
+        if pred_max is not None and pred_max > upper_bound:
+            upper_bound = pred_max
+
+        # Y-ekseni limitleri
+        ylim = (lower_bound, upper_bound)
+
+        # Güzel tikler: ...,-10^2,-10^1,0,10^1,10^2,...
+        k_min = int(np.floor(lower_bound)) if np.isfinite(lower_bound) else -1
+        k_max = int(np.ceil(upper_bound)) if np.isfinite(upper_bound) else 1
+        tickvals = list(range(k_min, k_max + 1))
+        ticktext = []
+        for k in tickvals:
+            if k == 0:
+                ticktext.append("0")
+            else:
+                # signed-log ölçek için sayıları doğrudan göster (-100, -10, 10, 100 gibi)
+                ticktext.append(str(int(np.sign(k) * (10 ** abs(k)))))
+
+        # --- Çizim
         fig = go.Figure()
-        for metric, color in zip(["Fiyat", "Tahmin"], ["#1976d2", "#a6761d"]):
-            d = fiyat_df[fiyat_df.metric == metric]
-            if not d.empty:
-                fig.add_trace(go.Scatter(
-                    x=d.period,
-                    y=d.value,
-                    mode="lines+markers",
-                    name=metric,
-                    line=dict(width=2, color=color),
-                ))
+
+        # Fiyat (mavi): pozitif log tarafı
+        fig.add_trace(go.Scatter(
+            x=d_price["period"], y=y_price,
+            mode="lines", name="Fiyat",
+            line=dict(width=2, color="#1976d2")
+        ))
+
+        # Tahmin (turuncu): nokta + çizgi, klip uygulanmış değerlerle
+        fig.add_trace(go.Scatter(
+            x=d_pred["period"], y=y_pred,
+            mode="lines+markers", name="Tahmin",
+            line=dict(width=2, color="#a6761d"),
+            marker=dict(size=5)
+        ))
+
         fig.update_layout(
-            title="Fiyat & Tahmin",
-            height=280,
+            title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
+            height=1120,
             margin=dict(l=10, r=10, t=40, b=10),
-            legend=dict(orientation="h", y=1.12),
+            legend=dict(orientation="h", y=1.12)
         )
+
+        fig.update_yaxes(
+            range=[ylim[0], ylim[1]],
+            tickvals=tickvals,
+            ticktext=ticktext,
+            zeroline=True,
+            zerolinewidth=1
+        )
+
         charts.append(
             dcc.Graph(
                 figure=fig,
