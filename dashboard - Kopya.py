@@ -257,11 +257,10 @@ def company_layout(ticker, favs):
                 ))
         fig.update_layout(
             title="Fiyat & Tahmin",
-            height=560,
+            height=280,
             margin=dict(l=10, r=10, t=40, b=10),
             legend=dict(orientation="h", y=1.12),
         )
-        fig.update_yaxes(type="log")
         charts.append(
             dcc.Graph(
                 figure=fig,
