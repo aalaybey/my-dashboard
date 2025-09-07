@@ -351,14 +351,17 @@ def company_layout(ticker, favs):
             type="category",
             categoryorder="array",
             categoryarray=list(cats),
-            range=[-0.6, len(cats) - 0.02]  # sağ ped ↑; etiketler kesilmesin
+            range=[-0.6, len(cats) - 0.02],  # sağ ped
+            automargin=True  # x-etiketleri için alt boşluğu otomatik büyüt
         )
 
         fig.update_layout(
             title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
             height=560,
-            margin=dict(l=12, r=32, t=80, b=110),
-            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
+            # alttan taşmayı kesin bitirmek için alt marjı büyüt
+            margin=dict(l=12, r=32, t=80, b=130),
+            # lejandı GRAFİĞİN İÇİNDE alt tarafa al (y=0.02)
+            legend=dict(orientation="h", y=0.02, yanchor="bottom", x=0.01, xanchor="left")
         )
 
         fig.update_yaxes(
