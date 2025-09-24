@@ -232,6 +232,9 @@ def company_layout(ticker, favs):
             html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
             html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),
+            html.Tr([html.Th("Potential"),
+                     html.Td(f"{info.get('potential'):.2f}" if info.get("potential") is not None else "-")]),
+
             html.Tr([html.Th("Radar"), html.Td(td_safe(info.get("radar")))]),
         ],
         className="table table-sm",
@@ -246,8 +249,13 @@ def company_layout(ticker, favs):
     fiyat_df = metrics_df[metrics_df.metric.isin(["Fiyat", "Tahmin"])]
     if not fiyat_df.empty:
         # --- Hazırlık
-        d_price = fiyat_df[fiyat_df.metric == "Fiyat"].sort_values("period")
-        d_pred = fiyat_df[fiyat_df.metric == "Tahmin"].sort_values("period")
+        # NULL period / value olanları at ve sıralayıp index’i düzelt
+        d_price = (fiyat_df[fiyat_df.metric == "Fiyat"]
+                   .dropna(subset=["period", "value"])
+                   .sort_values("period").reset_index(drop=True))
+        d_pred = (fiyat_df[fiyat_df.metric == "Tahmin"]
+                  .dropna(subset=["period", "value"])
+                  .sort_values("period").reset_index(drop=True))
 
         def signed_log(arr):
             arr = np.asarray(pd.to_numeric(arr, errors="coerce"), dtype=float)
@@ -259,24 +267,25 @@ def company_layout(ticker, favs):
         y_price = signed_log(d_price["value"].values)
         pos_max = np.nanmax(y_price) if np.isfinite(np.nanmax(y_price)) else 0.0
 
-        # Pozitif max’a göre negatif tarafın aynasını kur
-        # Negatif tahmin varsa ayna kur; yoksa yalnız pozitif log eksen
-        has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
-        if has_neg_pred:
-            lower_bound = -pos_max
-        else:
-            # Negatif yoksa alt sınırı pozitif tarafta tut (ayna olmasın)
-            lower_bound = float(np.floor(np.nanmin(y_price))) if np.isfinite(np.nanmin(y_price)) else 0.0
-
-        upper_bound = pos_max
-
-        # 2) Tahminleri signed-log’a çevir (negatif ise alt tarafa düşer)
+        # 2) Tahminleri signed-log’a çevir (negatif varsa alt tarafa düşer)
         y_pred_raw = signed_log(d_pred["value"].values)
 
-        # 3) Negatif aynanın dışına taşanları kliple (alt sınıra eşitle)
-        y_pred = np.copy(y_pred_raw)
-        if np.isfinite(lower_bound):
-            y_pred = np.where(y_pred < lower_bound, lower_bound, y_pred)
+        # Ayna/simetri SADECE negatif tahmin varsa devrede
+        has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
+
+        if has_neg_pred:
+            # Aynayı aç: negatif limit = pozitif limitin simetriği
+            lower_bound = -pos_max
+            upper_bound = pos_max
+            # Sadece bu modda negatifte dışarı taşanları kliple
+            y_pred = np.where(y_pred_raw < lower_bound, lower_bound, y_pred_raw)
+        else:
+            # Aynayı kapat: tek eksen log (fiyat + tahmin) ve KLİP YOK
+            # Alt sınırı her iki serinin minimumuna göre belirle
+            min_pos = np.nanmin([np.nanmin(y_price), np.nanmin(y_pred_raw)])
+            lower_bound = int(np.floor(min_pos)) if np.isfinite(min_pos) else 0
+            upper_bound = pos_max
+            y_pred = y_pred_raw
 
         # 4) Pozitif tarafta fiyat üstünü aşan tahmin varsa, ekseni genişlet (güvenli)
         pred_max = None
@@ -345,14 +354,19 @@ def company_layout(ticker, favs):
                 showlegend=False
             ))
 
-        # X-ekseni: kategorileri sabitle ve sağa ped ver (sağdan taşma olmasın)
-        cats = pd.Index(d_price["period"].astype(str)).union(d_pred["period"].astype(str))
+        # Kategorileri sadece GEÇERLİ period’lardan oluştur (None/NaT yok)
+        cats_price = d_price["period"].astype(str).tolist()
+        cats_pred = d_pred["period"].astype(str).tolist()
+        cats = pd.Index(cats_price).union(pd.Index(cats_pred))  # temiz birleşim
+
+        # Sağdan taşmayı kesmek için küçük ped
+        right_pad = 0.02
         fig.update_xaxes(
             type="category",
             categoryorder="array",
             categoryarray=list(cats),
-            range=[-0.6, len(cats) - 0.02],  # sağ ped
-            automargin=True  # x-etiketleri için alt boşluğu otomatik büyüt
+            range=[-0.5, len(cats) - right_pad],
+            automargin=True
         )
 
         fig.update_layout(

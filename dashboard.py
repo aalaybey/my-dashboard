@@ -101,6 +101,48 @@ def current_radar_list():
         df = pd.read_sql(q, conn)
     return df["ticker"].tolist()
 
+@functools.lru_cache(maxsize=1)
+def load_companies_grouped():
+    """
+    Tüm şirketleri industry'lere göre gruplar. Her industry içinde:
+    - potential DESC (NULLS LAST)
+    - eşitlikte ticker ASC
+    Kolonlar: ticker, industry, potential, market_cap, price_last, pred_last
+    """
+    q = sa_text("""
+        WITH latest AS (
+            SELECT
+                ticker,
+                metric,
+                value::numeric AS value,
+                ROW_NUMBER() OVER (PARTITION BY ticker, metric ORDER BY period DESC) AS rn
+            FROM excel_metrics
+            WHERE metric IN ('Fiyat','Tahmin')
+        )
+        SELECT
+            ci.ticker,
+            COALESCE(ci.industry, 'Unknown') AS industry,
+            ci.potential::numeric AS potential,
+            ci.market_cap::numeric AS market_cap,
+            /* En yeni fiyat & tahmin */
+            MAX(CASE WHEN l.metric='Fiyat'   AND l.rn=1 THEN l.value END) AS price_last,
+            MAX(CASE WHEN l.metric='Tahmin'  AND l.rn=1 THEN l.value END) AS pred_last
+        FROM company_info ci
+        LEFT JOIN latest l ON l.ticker = ci.ticker
+        GROUP BY ci.ticker, industry, potential, market_cap
+        ORDER BY industry, potential DESC NULLS LAST, ci.ticker ASC
+    """)
+    with get_engine().connect() as conn:
+        df = pd.read_sql(q, conn)
+
+    grouped = {}
+    for ind, g in df.groupby("industry", sort=True):
+        rows = g[["ticker", "potential", "market_cap", "price_last", "pred_last"]].to_dict(orient="records")
+        grouped[ind] = rows
+    return grouped
+
+
+
 # ────────────── BİLEŞENLER ──────────────
 def search_input():
     return dbc.Input(
@@ -110,35 +152,96 @@ def search_input():
         debounce=True,
         style={"maxWidth": "220px"},
     )
-def star_icon(filled):
-    return html.I(
-        className="bi bi-star-fill" if filled else "bi bi-star",
-        style={"fontSize": "1.8rem", "color": "#f7c948", "cursor": "pointer"},
-        id="fav-toggle",
-        title="Favorilere ekle/çıkar"
-    )
+
 def make_company_link(ticker):
-    return dcc.Link(ticker, href=f"/?t={ticker}")
+    # Yeni sekmede aç
+    return dcc.Link(ticker, href=f"/?t={ticker}", target="_blank")
+
+
+def companies_layout():
+    data = load_companies_grouped()
+
+    def fmt_potential(x):
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            return "-"
+        try:
+            return f"{float(x):.2f}"
+        except Exception:
+            return str(x)
+
+    def fmt_money_int(x):
+        # Market cap gibi büyük sayılar için 1.234.567 formatı (virgül yerine nokta)
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            return "-"
+        try:
+            return f"{int(float(x)):,}".replace(",", ".")
+        except Exception:
+            return str(x)
+
+    def fmt_price(x):
+        if x is None or (isinstance(x, float) and np.isnan(x)):
+            return "-"
+        try:
+            return f"{float(x):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return str(x)
+
+    blocks = [html.H4("🏢 Şirketler (Industry'lere göre, Potential ↓)"), html.Hr()]
+
+    for industry, rows in data.items():
+        # Tablo başlığı
+        header = html.Thead(
+            html.Tr([
+                html.Th("Ticker"),
+                html.Th("Potential"),
+                html.Th("Market Cap"),
+                html.Th("Fiyat (en yeni)"),
+                html.Th("Tahmin (en yeni)"),
+            ])
+        )
+        # Satırlar
+        body_rows = []
+        for r in rows:
+            body_rows.append(
+                html.Tr([
+                    html.Td(make_company_link(r["ticker"])),
+                    html.Td(fmt_potential(r.get("potential"))),
+                    html.Td(fmt_money_int(r.get("market_cap"))),
+                    html.Td(fmt_price(r.get("price_last"))),
+                    html.Td(fmt_price(r.get("pred_last"))),
+                ])
+            )
+
+        table = dbc.Table(
+            [header, html.Tbody(body_rows if body_rows else [html.Tr([html.Td("Kayıt yok", colSpan=5)])])],
+            bordered=False,
+            hover=True,
+            responsive=True,
+            striped=True,
+            className="table-sm mb-4"
+        )
+
+        blocks.append(html.H5(industry))
+        blocks.append(table)
+
+    return html.Div(blocks)
+
+
 
 # ────────────── LAYOUT ──────────────
 app.layout = dbc.Container(
     [
         dcc.Location(id="url", refresh=False),
-        dcc.Store(id="store-favs", storage_type="local"),
         dcc.Store(id="store-radar", storage_type="session"),
         dbc.Row(
             [
-                dbc.Col(
-                    search_input(),
-                    sm=6,
-                ),
                 dbc.Col(
                     [
                         dbc.Button("Ana Sayfa", href="https://alaybey.onrender.com/", color="primary", outline=True,
                                    className="ms-1 mb-2", id="btn-home"),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2 mb-2"),
-                        dbc.Button("Favoriler", id="btn-favs", color="secondary", outline=True, className="ms-1 mb-2"),
-                        # Finansal İndir butonu ana sayfadan kaldırıldı
+                        dbc.Button("Şirketler", id="btn-companies", color="secondary", outline=True,
+                                   className="ms-1 mb-2"),
                         dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
                                    className="ms-1 mb-2"),
                     ],
@@ -178,41 +281,40 @@ def on_search(val):
 # ────────────── ANA İÇERİK CALLBACK ──────────────
 @app.callback(
     Output("page-content", "children"),
-    [Input("url", "href"), Input("btn-favs", "n_clicks"), Input("btn-radar", "n_clicks")],
-    [State("store-favs", "data"), State("store-radar", "data")],
+    [Input("url", "href"), Input("btn-companies", "n_clicks"), Input("btn-radar", "n_clicks")],
+    [State("store-radar", "data")],
 )
-def render_page(href, fav_click, radar_click, favs, radar_data):
+def render_page(href, companies_click, radar_click, radar_data):
     ctx = callback_context
     trig_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "url"
-    favs = favs or []
     radar_data = radar_data or []
 
-    if trig_id == "btn-favs":
-        return favorites_layout(favs)
+    if trig_id == "btn-companies":
+        return companies_layout()
     if trig_id == "btn-radar":
         return radar_layout(radar_data)
+
     ticker = parse_ticker_from_href(href)
     if not ticker:
-        # Hiçbir şirket seçili değilse sadece boş bir div döndür (veya dilersen hoş geldin mesajı ekle)
         return html.Div()
-    return company_layout(ticker, favs)
+    return company_layout(ticker)
+
 
 # ────────────── ŞİRKET SAYFASI ──────────────
-def company_layout(ticker, favs):
+def company_layout(ticker):
     info = load_company_info(ticker)
     if info is None:
         return html.Div("Geçersiz ticker.")
     metrics_df = load_metrics(ticker)
-    is_fav = ticker in favs
 
     header = dbc.Row(
         [
             dbc.Col(html.H4(ticker, className="mb-0"), width="auto"),
-            dbc.Col(star_icon(is_fav), width="auto"),
         ],
         align="center",
         className="gap-2",
     )
+
 
     def td_safe(val, binlik=False):
         if pd.isnull(val): return "-"
@@ -433,41 +535,6 @@ def company_layout(ticker, favs):
         charts_container
     ])
 
-# ────────────── FAVORİ CALLBACK ──────────────
-@app.callback(
-    Output("store-favs", "data"),
-    Input("fav-toggle", "n_clicks"),
-    State("url", "href"),
-    State("store-favs", "data"),
-    prevent_initial_call=True,
-)
-def toggle_fav(n_clicks, href, favs):
-    # İlk render / layout yenilemesinde n_clicks 0 ya da None olur ⇒ işlem yapma
-    if not callback_context.triggered or not n_clicks:
-        raise PreventUpdate
-
-    ticker = parse_ticker_from_href(href)
-    if not ticker:
-        raise PreventUpdate
-
-    favs = list(favs or [])      # kopya: Dash değişikliği algılasın
-    if ticker in favs:
-        favs.remove(ticker)      # yıldız doluyken → kaldır
-    else:
-        favs.append(ticker)      # yıldız boşken  → ekle
-
-    return favs
-
-
-def favorites_layout(favs):
-    return html.Div(
-        [
-            html.H4("⭐ Favoriler"),
-            html.Hr(),
-            html.Ul([html.Li(make_company_link(t), className="mb-2") for t in favs]) if favs else html.Div("Favorilere eklenmiş şirket yok."),
-        ]
-    )
-
 # ────────────── RADAR CALLBACK ──────────────
 def radar_layout(radars):
     return html.Div(
@@ -490,10 +557,11 @@ def on_radar_update(_):
 def refresh_data(n_clicks):
     if not n_clicks:
         raise PreventUpdate
-    # RAM cache'i temizle!
     load_company_info.cache_clear()
     load_metrics.cache_clear()
+    load_companies_grouped.cache_clear()
     return "✅ Veriler güncellendi!"
+
 
 # ────────────── MAIN ──────────────
 if __name__ == "__main__":
