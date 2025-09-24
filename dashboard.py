@@ -124,14 +124,15 @@ def load_companies_grouped():
             COALESCE(ci.industry, 'Unknown') AS industry,
             ci.potential::numeric AS potential,
             ci.market_cap::numeric AS market_cap,
-            /* En yeni fiyat & tahmin */
-            MAX(CASE WHEN l.metric='Fiyat'   AND l.rn=1 THEN l.value END) AS price_last,
-            MAX(CASE WHEN l.metric='Tahmin'  AND l.rn=1 THEN l.value END) AS pred_last
+            /* Fiyat: SONDAN BİR ÖNCEKİ (rn=2) | Tahmin: EN YENİ (rn=1) */
+            MAX(CASE WHEN l.metric='Fiyat'  AND l.rn=2 THEN l.value END) AS price_last,
+            MAX(CASE WHEN l.metric='Tahmin' AND l.rn=1 THEN l.value END) AS pred_last
         FROM company_info ci
         LEFT JOIN latest l ON l.ticker = ci.ticker
         GROUP BY ci.ticker, industry, potential, market_cap
         ORDER BY industry, potential DESC NULLS LAST, ci.ticker ASC
     """)
+
     with get_engine().connect() as conn:
         df = pd.read_sql(q, conn)
 
@@ -235,6 +236,13 @@ app.layout = dbc.Container(
         dcc.Store(id="store-radar", storage_type="session"),
         dbc.Row(
             [
+                dbc.Col(
+                    [
+                        search_input(),
+                    ],
+                    sm=6,
+                    className="text-start",
+                ),
                 dbc.Col(
                     [
                         dbc.Button("Ana Sayfa", href="https://alaybey.onrender.com/", color="primary", outline=True,
