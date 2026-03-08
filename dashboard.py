@@ -369,7 +369,7 @@ def company_layout(ticker):
                   .sort_values("period").reset_index(drop=True))
 
         def signed_log(arr):
-            arr = np.asarray(pd.to_numeric(arr, errors="coerce"), dtype=float)
+            arr = np.array(pd.to_numeric(arr, errors="coerce"), dtype=float, copy=True)
             # 0 değerlerini çizmiyoruz (log tanımsız)
             arr[arr == 0] = np.nan
             return np.sign(arr) * np.log10(np.abs(arr))
