@@ -341,6 +341,7 @@ def company_layout(ticker):
             html.Tr([html.Th("Industry"), html.Td(td_safe(info.get("industry")))]),
             html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
+            html.Tr([html.Th("Filing Date"), html.Td(td_safe(info.get("filing_date")))]),
             html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),
             html.Tr([html.Th("Potential"),
                      html.Td(f"{info.get('potential'):.2f}" if info.get("potential") is not None else "-")]),
