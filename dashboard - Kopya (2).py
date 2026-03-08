@@ -323,9 +323,9 @@ def company_layout(ticker):
         className="gap-2",
     )
 
+
     def td_safe(val, binlik=False):
-        if pd.isnull(val):
-            return "-"
+        if pd.isnull(val): return "-"
         if binlik:
             try:
                 return f"{int(val):,}".replace(",", ".")
@@ -335,103 +335,6 @@ def company_layout(ticker):
             return f"{val:,.0f}"
         return str(val)
 
-    def signed_log(arr):
-        arr = np.array(pd.to_numeric(arr, errors="coerce"), dtype=float, copy=True)
-        arr[arr == 0] = np.nan
-        return np.sign(arr) * np.log10(np.abs(arr))
-
-    def make_signed_log_figure(df, metric, height=560, show_markers=True, line_color=None):
-        d = (
-            df[df.metric == metric]
-            .dropna(subset=["period", "value"])
-            .sort_values("period")
-            .reset_index(drop=True)
-        )
-        if d.empty:
-            return None
-
-        y_raw = signed_log(d["value"].values)
-        finite_vals = y_raw[np.isfinite(y_raw)]
-        if finite_vals.size == 0:
-            return None
-
-        y_min_raw = float(np.nanmin(finite_vals))
-        y_max_raw = float(np.nanmax(finite_vals))
-
-        abs_max = max(abs(y_min_raw), abs(y_max_raw))
-        if not np.isfinite(abs_max) or abs_max == 0:
-            abs_max = 1.0
-
-        k_max = int(np.ceil(abs_max))
-        k_min = -k_max
-
-        tickvals = list(range(k_min, k_max + 1))
-        ticktext = []
-        for k in tickvals:
-            if k == 0:
-                ticktext.append("0")
-            else:
-                ticktext.append(str(int(np.sign(k) * (10 ** abs(k)))))
-
-        fig = go.Figure()
-
-        trace_kwargs = dict(
-            x=d["period"],
-            y=y_raw,
-            mode="lines+markers" if show_markers else "lines",
-            name=metric,
-            line=dict(width=2) if line_color is None else dict(width=2, color=line_color),
-        )
-        if show_markers:
-            trace_kwargs["marker"] = dict(size=5)
-
-        fig.add_trace(go.Scatter(**trace_kwargs))
-
-        valid_idx = np.where(np.isfinite(y_raw))[0]
-        if valid_idx.size:
-            i = int(valid_idx[-1])
-            last_text = f"{float(d['value'].iloc[i]):,.2f}"
-            text_kwargs = dict(
-                x=[d["period"].iloc[i]],
-                y=[y_raw[i]],
-                text=[last_text],
-                mode="text",
-                textposition="middle right",
-                showlegend=False,
-                hoverinfo="skip",
-            )
-            if line_color is not None:
-                text_kwargs["textfont"] = dict(size=11, color=line_color)
-            fig.add_trace(go.Scatter(**text_kwargs))
-
-        cats = d["period"].astype(str).tolist()
-        right_pad = 0.02
-
-        fig.update_xaxes(
-            type="category",
-            categoryorder="array",
-            categoryarray=cats,
-            range=[-0.5, len(cats) - right_pad],
-            automargin=True
-        )
-
-        fig.update_layout(
-            title=f"{metric} (Signed-Log, Aynalı Eksen)",
-            height=height,
-            margin=dict(l=12, r=32, t=80, b=160),
-            legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
-        )
-
-        fig.update_yaxes(
-            range=[k_min, k_max],
-            tickvals=tickvals,
-            ticktext=ticktext,
-            zeroline=True,
-            zerolinewidth=1
-        )
-
-        return fig
-
     table = html.Table(
         [
             html.Tr([html.Th("Sector"), html.Td(td_safe(info.get("sector")))]),
@@ -440,10 +343,9 @@ def company_layout(ticker):
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
             html.Tr([html.Th("Filing Date"), html.Td(td_safe(info.get("filing_date")))]),
             html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),
-            html.Tr([
-                html.Th("Potential"),
-                html.Td(f"{info.get('potential'):.2f}" if info.get("potential") is not None else "-")
-            ]),
+            html.Tr([html.Th("Potential"),
+                     html.Td(f"{info.get('potential'):.2f}" if info.get("potential") is not None else "-")]),
+
             html.Tr([html.Th("Radar"), html.Td(td_safe(info.get("radar")))]),
         ],
         className="table table-sm",
@@ -453,40 +355,50 @@ def company_layout(ticker):
         [html.H5("Summary"), html.Pre(info.get("summary") or "", style={"whiteSpace": "pre-wrap"})],
         className="p-2 border rounded",
     )
-
+    # Grafikler
     charts = []
-
     fiyat_df = metrics_df[metrics_df.metric.isin(["Fiyat", "Tahmin"])]
     if not fiyat_df.empty:
-        d_price = (
-            fiyat_df[fiyat_df.metric == "Fiyat"]
-            .dropna(subset=["period", "value"])
-            .sort_values("period")
-            .reset_index(drop=True)
-        )
-        d_pred = (
-            fiyat_df[fiyat_df.metric == "Tahmin"]
-            .dropna(subset=["period", "value"])
-            .sort_values("period")
-            .reset_index(drop=True)
-        )
+        # --- Hazırlık
+        # NULL period / value olanları at ve sıralayıp index’i düzelt
+        d_price = (fiyat_df[fiyat_df.metric == "Fiyat"]
+                   .dropna(subset=["period", "value"])
+                   .sort_values("period").reset_index(drop=True))
+        d_pred = (fiyat_df[fiyat_df.metric == "Tahmin"]
+                  .dropna(subset=["period", "value"])
+                  .sort_values("period").reset_index(drop=True))
 
+        def signed_log(arr):
+            arr = np.array(pd.to_numeric(arr, errors="coerce"), dtype=float, copy=True)
+            # 0 değerlerini çizmiyoruz (log tanımsız)
+            arr[arr == 0] = np.nan
+            return np.sign(arr) * np.log10(np.abs(arr))
+
+        # 1) Fiyat: pozitif log (TradingView tarzı, base10)
         y_price = signed_log(d_price["value"].values)
         pos_max = np.nanmax(y_price) if np.isfinite(np.nanmax(y_price)) else 0.0
 
+        # 2) Tahminleri signed-log’a çevir (negatif varsa alt tarafa düşer)
         y_pred_raw = signed_log(d_pred["value"].values)
+
+        # Ayna/simetri SADECE negatif tahmin varsa devrede
         has_neg_pred = pd.to_numeric(d_pred["value"], errors="coerce").lt(0).any()
 
         if has_neg_pred:
+            # Aynayı aç: negatif limit = pozitif limitin simetriği
             lower_bound = -pos_max
             upper_bound = pos_max
+            # Sadece bu modda negatifte dışarı taşanları kliple
             y_pred = np.where(y_pred_raw < lower_bound, lower_bound, y_pred_raw)
         else:
+            # Aynayı kapat: tek eksen log (fiyat + tahmin) ve KLİP YOK
+            # Alt sınırı her iki serinin minimumuna göre belirle
             min_pos = np.nanmin([np.nanmin(y_price), np.nanmin(y_pred_raw)])
             lower_bound = int(np.floor(min_pos)) if np.isfinite(min_pos) else 0
             upper_bound = pos_max
             y_pred = y_pred_raw
 
+        # 4) Pozitif tarafta fiyat üstünü aşan tahmin varsa, ekseni genişlet (güvenli)
         pred_max = None
         try:
             pred_max = float(np.nanmax(y_pred_raw))
@@ -496,9 +408,11 @@ def company_layout(ticker):
         if pred_max is not None and pred_max > upper_bound:
             upper_bound = pred_max
 
+        # Üst limiti güvenli yuvarla (taşmayı engelle)
         k_min = int(np.floor(lower_bound)) if np.isfinite(lower_bound) else -1
         k_max = int(np.ceil(upper_bound)) if np.isfinite(upper_bound) else 1
 
+        # Tick değerleri (…,-100,-10,0,10,100,…) — normal sayı olarak yaz
         tickvals = list(range(k_min, k_max + 1))
         ticktext = []
         for k in tickvals:
@@ -507,55 +421,56 @@ def company_layout(ticker):
             else:
                 ticktext.append(str(int(np.sign(k) * (10 ** abs(k)))))
 
+        # Y-ekseni aralığı: integer log-güç aralığına sabitle
+        ylim = (k_min, k_max)
+
+        # --- Çizim
         fig = go.Figure()
 
+        # Fiyat (mavi): pozitif log tarafı
         fig.add_trace(go.Scatter(
-            x=d_price["period"],
-            y=y_price,
-            mode="lines",
-            name="Fiyat",
+            x=d_price["period"], y=y_price,
+            mode="lines", name="Fiyat",
             line=dict(width=2, color="#1976d2")
         ))
-
+        # Son FİYAT noktasını etiketle (son GEÇERLİ noktaya; mavi ve üstte)
         valid_idx_price = np.where(np.isfinite(y_price))[0]
         if valid_idx_price.size:
             i = int(valid_idx_price[-1])
             last_price_text = f"{float(d_price['value'].iloc[i]):,.2f}"
             fig.add_trace(go.Scatter(
-                x=[d_price["period"].iloc[i]],
-                y=[y_price[i]],
+                x=[d_price['period'].iloc[i]], y=[y_price[i]],
                 text=[last_price_text],
                 mode="text",
-                textposition="middle right",
-                textfont=dict(size=11, color="#1976d2"),
+                textposition="middle right",  # tahminle aynı yana
+                textfont=dict(size=11, color="#1976d2"),  # mavi görünsün
                 hoverinfo="skip",
                 showlegend=False
             ))
 
+        # Tahmin (turuncu): nokta + çizgi, klip uygulanmış değerlerle
         fig.add_trace(go.Scatter(
-            x=d_pred["period"],
-            y=y_pred,
-            mode="lines+markers",
-            name="Tahmin",
+            x=d_pred["period"], y=y_pred,
+            mode="lines+markers", name="Tahmin",
             line=dict(width=2, color="#a6761d"),
             marker=dict(size=5)
         ))
-
+        # Son tahmin noktasını etiketle (orijinal değeri yaz)
         if len(d_pred) > 0 and np.isfinite(y_pred[-1]):
             last_text = f"{float(d_pred['value'].iloc[-1]):,.2f}"
             fig.add_trace(go.Scatter(
-                x=[d_pred["period"].iloc[-1]],
-                y=[y_pred[-1]],
-                text=[last_text],
-                mode="text",
+                x=[d_pred['period'].iloc[-1]], y=[y_pred[-1]],
+                text=[last_text], mode="text",
                 textposition="middle right",
                 showlegend=False
             ))
 
+        # Kategorileri sadece GEÇERLİ period’lardan oluştur (None/NaT yok)
         cats_price = d_price["period"].astype(str).tolist()
         cats_pred = d_pred["period"].astype(str).tolist()
-        cats = pd.Index(cats_price).union(pd.Index(cats_pred))
+        cats = pd.Index(cats_price).union(pd.Index(cats_pred))  # temiz birleşim
 
+        # Sağdan taşmayı kesmek için küçük ped
         right_pad = 0.02
         fig.update_xaxes(
             type="category",
@@ -568,12 +483,14 @@ def company_layout(ticker):
         fig.update_layout(
             title="Fiyat & Tahmin (Signed-Log, Aynalı Eksen)",
             height=560,
+            # alttan taşmayı kesin bitirmek için alt marjı büyüt
             margin=dict(l=12, r=32, t=80, b=160),
+            # lejandı GRAFİĞİN İÇİNDE alt tarafa al (y=0.02)
             legend=dict(orientation="h", y=-0.2, x=0.01, xanchor="left")
         )
 
         fig.update_yaxes(
-            range=[k_min, k_max],
+            range=[k_min, k_max],  # taşmayı önlemek için tamsayı güç aralığı
             tickvals=tickvals,
             ticktext=ticktext,
             zeroline=True,
@@ -584,22 +501,35 @@ def company_layout(ticker):
             dcc.Graph(
                 figure=fig,
                 className="chart-graph",
-                style={"marginTop": "8px"},
+                style={"marginTop": "8px"},  # üstte minicik boşluk
                 config={"displayModeBar": False, "staticPlot": True}
             )
         )
 
+    # Diğer metrikler
     for metric in [
         "MCap/CATS", "Capex/Amort", "EBIT Margin", "FCF Margin",
         "Gross Margin", "CATS", "Satış Çeyrek", "EBIT Çeyrek", "Net Kar Çeyrek"
     ]:
-        fig = make_signed_log_figure(metrics_df, metric, height=560, show_markers=True)
-        if fig is not None:
+        df = metrics_df[metrics_df.metric == metric].dropna(subset=["period", "value"])
+        if not df.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df.period,
+                y=df.value,
+                mode="lines+markers",
+                name=metric,
+                line=dict(width=2),
+            ))
+            fig.update_layout(
+                title=metric,
+                height=240,
+                margin=dict(l=10, r=10, t=40, b=10),
+            )
             charts.append(
                 dcc.Graph(
                     figure=fig,
                     className="chart-graph",
-                    style={"marginTop": "8px"},
                     config={"displayModeBar": False, "staticPlot": True}
                 )
             )
