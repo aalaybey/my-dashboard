@@ -97,7 +97,7 @@ def load_metrics(ticker):
 
 def current_radar_list():
     q = sa_text("""
-        SELECT ticker
+        SELECT ticker, filing_date
         FROM company_info
         WHERE radar = 1
         ORDER BY
@@ -107,7 +107,24 @@ def current_radar_list():
     """)
     with get_engine().connect() as conn:
         df = pd.read_sql(q, conn)
-    return df["ticker"].tolist()
+
+    records = []
+    for _, row in df.iterrows():
+        fd = row["filing_date"]
+        if pd.isnull(fd):
+            fd_str = "-"
+        else:
+            try:
+                fd_str = str(fd)[:10]
+            except Exception:
+                fd_str = str(fd)
+
+        records.append({
+            "ticker": row["ticker"],
+            "filing_date": fd_str
+        })
+
+    return records
 
 @functools.lru_cache(maxsize=1)
 def load_companies_grouped():
@@ -554,12 +571,32 @@ def company_layout(ticker):
 
 # ────────────── RADAR CALLBACK ──────────────
 def radar_layout(radars):
+    items = []
+
+    for item in (radars or []):
+        if isinstance(item, dict):
+            ticker = item.get("ticker")
+            filing_date = item.get("filing_date", "-")
+        else:
+            ticker = item
+            filing_date = "-"
+
+        items.append(
+            html.Li(
+                [
+                    make_company_link(ticker),
+                    html.Span(f" — {filing_date}", style={"marginLeft": "8px", "color": "#666"})
+                ],
+                className="mb-2"
+            )
+        )
+
     return html.Div(
         [
             html.H4("🕵️ Radar Listesi"),
             dbc.Button("Listeyi Güncelle", id="btn-update-radar", color="info", outline=True, size="sm", className="mb-2"),
             html.Hr(),
-            html.Ul([html.Li(make_company_link(t), className="mb-2") for t in radars]) if radars else html.Div("Radar'da şirket yok."),
+            html.Ul(items) if items else html.Div("Radar'da şirket yok."),
         ]
     )
 @app.callback(Output("store-radar", "data"), Input("btn-update-radar", "n_clicks"), prevent_initial_call=True)
