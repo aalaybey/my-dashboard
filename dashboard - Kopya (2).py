@@ -96,15 +96,7 @@ def load_metrics(ticker):
     return df
 
 def current_radar_list():
-    q = sa_text("""
-        SELECT ticker
-        FROM company_info
-        WHERE radar = 1
-        ORDER BY
-            CASE WHEN filing_date IS NULL THEN 1 ELSE 0 END,
-            filing_date DESC,
-            ticker ASC
-    """)
+    q = sa_text("SELECT ticker FROM company_info WHERE radar = 1 ORDER BY ticker")
     with get_engine().connect() as conn:
         df = pd.read_sql(q, conn)
     return df["ticker"].tolist()
