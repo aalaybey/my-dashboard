@@ -96,10 +96,35 @@ def load_metrics(ticker):
     return df
 
 def current_radar_list():
-    q = sa_text("SELECT ticker FROM company_info WHERE radar = 1 ORDER BY ticker")
+    q = sa_text("""
+        SELECT ticker, filing_date
+        FROM company_info
+        WHERE radar = 1
+        ORDER BY
+            CASE WHEN filing_date IS NULL THEN 1 ELSE 0 END,
+            filing_date DESC,
+            ticker ASC
+    """)
     with get_engine().connect() as conn:
         df = pd.read_sql(q, conn)
-    return df["ticker"].tolist()
+
+    records = []
+    for _, row in df.iterrows():
+        fd = row["filing_date"]
+        if pd.isnull(fd):
+            fd_str = "-"
+        else:
+            try:
+                fd_str = str(fd)[:10]
+            except Exception:
+                fd_str = str(fd)
+
+        records.append({
+            "ticker": row["ticker"],
+            "filing_date": fd_str
+        })
+
+    return records
 
 @functools.lru_cache(maxsize=1)
 def load_companies_grouped():
@@ -341,6 +366,7 @@ def company_layout(ticker):
             html.Tr([html.Th("Industry"), html.Td(td_safe(info.get("industry")))]),
             html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
+            html.Tr([html.Th("Filing Date"), html.Td(td_safe(info.get("filing_date")))]),
             html.Tr([html.Th("Market Cap"), html.Td(td_safe(info.get("market_cap"), binlik=True))]),
             html.Tr([html.Th("Potential"),
                      html.Td(f"{info.get('potential'):.2f}" if info.get("potential") is not None else "-")]),
@@ -368,7 +394,7 @@ def company_layout(ticker):
                   .sort_values("period").reset_index(drop=True))
 
         def signed_log(arr):
-            arr = np.asarray(pd.to_numeric(arr, errors="coerce"), dtype=float)
+            arr = np.array(pd.to_numeric(arr, errors="coerce"), dtype=float, copy=True)
             # 0 değerlerini çizmiyoruz (log tanımsız)
             arr[arr == 0] = np.nan
             return np.sign(arr) * np.log10(np.abs(arr))
@@ -545,12 +571,32 @@ def company_layout(ticker):
 
 # ────────────── RADAR CALLBACK ──────────────
 def radar_layout(radars):
+    items = []
+
+    for item in (radars or []):
+        if isinstance(item, dict):
+            ticker = item.get("ticker")
+            filing_date = item.get("filing_date", "-")
+        else:
+            ticker = item
+            filing_date = "-"
+
+        items.append(
+            html.Li(
+                [
+                    make_company_link(ticker),
+                    html.Span(f" — {filing_date}", style={"marginLeft": "8px", "color": "#666"})
+                ],
+                className="mb-2"
+            )
+        )
+
     return html.Div(
         [
             html.H4("🕵️ Radar Listesi"),
             dbc.Button("Listeyi Güncelle", id="btn-update-radar", color="info", outline=True, size="sm", className="mb-2"),
             html.Hr(),
-            html.Ul([html.Li(make_company_link(t), className="mb-2") for t in radars]) if radars else html.Div("Radar'da şirket yok."),
+            html.Ul(items) if items else html.Div("Radar'da şirket yok."),
         ]
     )
 @app.callback(Output("store-radar", "data"), Input("btn-update-radar", "n_clicks"), prevent_initial_call=True)

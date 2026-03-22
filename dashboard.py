@@ -97,7 +97,7 @@ def load_metrics(ticker):
 
 def current_radar_list():
     q = sa_text("""
-        SELECT ticker, filing_date
+        SELECT ticker, filing_date, sub_industry
         FROM company_info
         WHERE radar = 1
         ORDER BY
@@ -119,9 +119,13 @@ def current_radar_list():
             except Exception:
                 fd_str = str(fd)
 
+        si = row.get("sub_industry")
+        si_str = str(si).strip() if pd.notna(si) and str(si).strip() else "-"
+
         records.append({
             "ticker": row["ticker"],
-            "filing_date": fd_str
+            "filing_date": fd_str,
+            "sub_industry": si_str
         })
 
     return records
@@ -273,8 +277,6 @@ app.layout = dbc.Container(
                         dbc.Button("Ana Sayfa", href="https://alaybey.onrender.com/", color="primary", outline=True,
                                    className="ms-1 mb-2", id="btn-home"),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2 mb-2"),
-                        dbc.Button("Şirketler", id="btn-companies", color="secondary", outline=True,
-                                   className="ms-1 mb-2"),
                         dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
                                    className="ms-1 mb-2"),
                     ],
@@ -314,16 +316,14 @@ def on_search(val):
 # ────────────── ANA İÇERİK CALLBACK ──────────────
 @app.callback(
     Output("page-content", "children"),
-    [Input("url", "href"), Input("btn-companies", "n_clicks"), Input("btn-radar", "n_clicks")],
+    [Input("url", "href"), Input("btn-radar", "n_clicks")],
     [State("store-radar", "data")],
 )
-def render_page(href, companies_click, radar_click, radar_data):
+def render_page(href, radar_click, radar_data):
     ctx = callback_context
     trig_id = ctx.triggered[0]["prop_id"].split(".")[0] if ctx.triggered else "url"
     radar_data = radar_data or []
 
-    if trig_id == "btn-companies":
-        return companies_layout()
     if trig_id == "btn-radar":
         return radar_layout(radar_data)
 
@@ -364,6 +364,7 @@ def company_layout(ticker):
         [
             html.Tr([html.Th("Sector"), html.Td(td_safe(info.get("sector")))]),
             html.Tr([html.Th("Industry"), html.Td(td_safe(info.get("industry")))]),
+            html.Tr([html.Th("Sub Industry"), html.Td(td_safe(info.get("sub_industry")))]),
             html.Tr([html.Th("Employees"), html.Td(td_safe(info.get("employees"), binlik=True))]),
             html.Tr([html.Th("Earnings Date"), html.Td(td_safe(info.get("earnings_date")))]),
             html.Tr([html.Th("Filing Date"), html.Td(td_safe(info.get("filing_date")))]),
@@ -577,15 +578,18 @@ def radar_layout(radars):
         if isinstance(item, dict):
             ticker = item.get("ticker")
             filing_date = item.get("filing_date", "-")
+            sub_industry = item.get("sub_industry", "-")
         else:
             ticker = item
             filing_date = "-"
+            sub_industry = "-"
 
         items.append(
             html.Li(
                 [
                     make_company_link(ticker),
-                    html.Span(f" — {filing_date}", style={"marginLeft": "8px", "color": "#666"})
+                    html.Span(f" — {filing_date}", style={"marginLeft": "8px", "color": "#666"}),
+                    html.Span(f" — {sub_industry}", style={"marginLeft": "8px", "color": "#999"})
                 ],
                 className="mb-2"
             )
