@@ -277,10 +277,8 @@ app.layout = dbc.Container(
                         dbc.Button("Ana Sayfa", href="https://alaybey.onrender.com/", color="primary", outline=True,
                                    className="ms-1 mb-2", id="btn-home"),
                         dbc.Button("Radar", id="btn-radar", color="secondary", outline=True, className="ms-2 mb-2"),
-                        html.A("Fit", href="https://tbycsyjdipqakbowpaad.supabase.co/storage/v1/object/public/radar-html/sfit_radar.html",
-                               target="_blank", className="btn btn-outline-info ms-2 mb-2"),
-                        html.A("All", href="https://tbycsyjdipqakbowpaad.supabase.co/storage/v1/object/public/radar-html/sall_radar.html",
-                               target="_blank", className="btn btn-outline-info ms-2 mb-2"),
+                        html.A("Fit", href="/fit", target="_blank", className="btn btn-outline-info ms-2 mb-2"),
+                        html.A("All", href="/all", target="_blank", className="btn btn-outline-info ms-2 mb-2"),
                         dbc.Button("Verileri Güncelle", id="btn-refresh-data", color="warning", outline=False,
                                    className="ms-1 mb-2"),
                     ],
@@ -623,6 +621,32 @@ def refresh_data(n_clicks):
     load_metrics.cache_clear()
     load_companies_grouped.cache_clear()
     return "✅ Veriler güncellendi!"
+
+
+# ────────────── RADAR HTML SAYFALARI ──────────────
+from flask import Response as FlaskResponse
+
+@app.server.route("/fit")
+def serve_fit():
+    try:
+        with get_engine().connect() as conn:
+            row = conn.execute(sa_text("SELECT html FROM radar_fit WHERE id = 1")).fetchone()
+        if row and row[0]:
+            return FlaskResponse(row[0], content_type="text/html; charset=utf-8")
+    except Exception as e:
+        return FlaskResponse(f"Hata: {e}", status=500)
+    return FlaskResponse("Fit radar verisi henüz yüklenmemiş.", status=404)
+
+@app.server.route("/all")
+def serve_all():
+    try:
+        with get_engine().connect() as conn:
+            row = conn.execute(sa_text("SELECT html FROM radar_all WHERE id = 1")).fetchone()
+        if row and row[0]:
+            return FlaskResponse(row[0], content_type="text/html; charset=utf-8")
+    except Exception as e:
+        return FlaskResponse(f"Hata: {e}", status=500)
+    return FlaskResponse("All radar verisi henüz yüklenmemiş.", status=404)
 
 
 # ────────────── MAIN ──────────────
